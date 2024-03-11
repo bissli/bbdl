@@ -1,0 +1,22 @@
+[tool.poetry]
+name = "bbdl"
+version = "0.1.0"
+description = ""
+authors = ["bissli <bissli@xyz.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "~3.11"
+more-itertools = "*"
+libb = { git = "https://github.com/bissli/libb.git", rev = "master", extras = ["ftp"], optional = true }
+pdbpp = { git = "https://github.com/pdbpp/pdbpp.git", rev = "master", optional = true }
+pytest = { version = "^8.1.1", optional = true }
+asserts = { version = "^0.12.0", optional = true }
+
+[tool.poetry.extras]
+test = ["pdbpp", "pytest", "asserts"]
+libb = ["libb"]
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
