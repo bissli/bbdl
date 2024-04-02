@@ -1,16 +1,52 @@
 import contextlib
+import copy
 import gzip
 import logging
 import os
 import time
+from dataclasses import dataclass, field
 
 from bbdl.parser import Field
-from libb import attrdict, config, ftp, to_date
+from libb import Date, attrdict, config, ftp
 from more_itertools import unique_everseen
+from typing_extensions import List
 
 logger = logging.getLogger(__name__)
 
 __all__ = ['SFTPClient']
+
+
+@dataclass
+class Options:
+
+    bval: bool = False
+    headers: List = field(default_factory=list)
+    begdate: Date | None = None
+    enddate: Date | None = None
+    compressed: bool = False
+    dateformat: str = 'yyyymmdd'
+    programflag: str = 'oneshot'
+    delimiter: str = '|'
+    wait_time: int = 20
+    sn: str | None = None
+    username: str | None = None
+    usernumber: str | None = None
+    hostname: str | None = None
+    password: str | None = None
+    fields_path: str = 'fields.csv'
+    remotedir: str = '/'
+    secure: bool = True
+
+    def __post_init__(self):
+        self.begdate = Date(self.begdate) if self.begdate else None
+        self.enddate = Date(self.enddate) if self.enddate else None
+
+    @classmethod
+    def from_config(cls, sitename: str, config=None):
+        this = config
+        for level in sitename.split('.'):
+            this = getattr(this, level)
+        return cls(**this['ftp'])
 
 
 class SFTPClient:
@@ -26,16 +62,10 @@ class SFTPClient:
         `usernumber`:
 
     """
-    def __init__(self, account, config, delimiter='|', wait_time=20,
-                 compressed=False, oneshot=True, dateformat='yyyymmdd'):
+    def __init__(self, account: str, config=config, **kwargs):
         self.account = account
         self.config = config
-        self.site = get_site(self.account, self.config)
-        self.delimiter = delimiter
-        self.wait_time = wait_time
-        self.compressed = compressed
-        self.dateformat = dateformat
-        self.programflag = 'oneshot' if oneshot else 'adhoc'
+        self.options = Options.from_config(account, config=config)
 
     def __enter__(self):
         logger.debug('Entering SecureFTP client')
@@ -53,11 +83,12 @@ class SFTPClient:
                 headers=None, begdate=None, enddate=None):
         """Request Bloomberg `fields` over `identifiers`.
         """
-        opts = options(bval=bval, headers=headers, begdate=begdate,
-                       enddate=enddate, compressed=self.compressed,
-                       wait_time=self.wait_time, delimiter=self.delimiter,
-                       site=self.site, programflag=self.programflag,
-                       dateformat=self.dateformat)
+        opts = copy.deepcopy(self.options)
+        opts.bval = bval
+        opts.headers = headers
+        opts.begdate = Date(begdate) if begdate else None
+        opts.enddate = Date(enddate) if enddate else None
+
         fields = limit_fields_to_categories(fields, categories)
 
         # chunk 500 fields per request
@@ -171,15 +202,15 @@ END-OF-FILE
         with open(reqfile, 'w') as f:
             # headers
             if opts.bval:
-                f.write(Request.BVAL_REQUEST_HEADER.format(**opts))
+                f.write(Request.BVAL_REQUEST_HEADER.format(**opts.__dict__))
             else:
-                f.write(Request.REQUEST_HEADER.format(**opts))
+                f.write(Request.REQUEST_HEADER.format(**opts.__dict__))
             if headers:
                 f.write('\n'.join(headers) + '\n')
             if opts.compressed and Request.COMPRESS_FLAG not in headers:
                 f.write(Request.COMPRESS_FLAG + '\n')
             if opts.sn and opts.usernumber:
-                f.write(Request.TERMINAL_HEADER.format(**opts))
+                f.write(Request.TERMINAL_HEADER.format(**opts.__dict__))
             f.write('\n')
             # fields
             f.write('START-OF-FIELDS\n')
@@ -338,24 +369,6 @@ def get_site(account, config):
     for level in account.split('.'):
         this = getattr(this, level)
     return this.ftp
-
-
-def options(**kwargs):
-    opts = attrdict()
-    opts.bval = kwargs.get('bval', False)
-    opts.headers = kwargs.get('headers', [])
-    opts.begdate = to_date(kwargs.get('begdate', None))
-    opts.enddate = to_date(kwargs.get('enddate', None))
-    opts.compressed = kwargs.get('compressed', False)
-    opts.dateformat = kwargs.get('dateformat', 'yyyymmdd')
-    opts.programflag = kwargs.get('programflag', 'oneshot')
-    opts.delimiter = kwargs.get('delimiter', '|')
-    opts.wait_time = kwargs.get('wait_time', 20)
-    opts.site = kwargs.get('site', {})
-    opts.sn = opts.site.get('sn')
-    opts.username = opts.site.get('username')
-    opts.usernumber = opts.site.get('usernumber')
-    return opts
 
 
 def unzip(zipfile):
