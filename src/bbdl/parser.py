@@ -1,27 +1,24 @@
 import csv
-import datetime
 import logging
 import os
 import re
 import sys
-from functools import partial
 from pathlib import Path
 from typing import List
 
 from libb import (
+    Date,
+    DateTime,
     OrderedSet,
+    Time,
     attrdict,
     cachedstaticproperty,
     parse_number,
-    to_date,
-    to_datetime,
-    to_time,
 )
 
-# raise error on date/time conversion
-to_date = partial(to_date, raise_err=True)
-to_datetime = partial(to_datetime, raise_err=True)
-to_time = partial(to_time, raise_err=True)
+to_date = lambda x, fmt=None: Date.parse(x, fmt=fmt, raise_err=True)
+to_datetime = lambda x, fmt=None: DateTime.parse(x, fmt=fmt, raise_err=True)
+to_time = lambda x, fmt=None: Time.parse(x, fmt=fmt, raise_err=True)
 
 logger = logging.getLogger(__name__)
 
@@ -40,15 +37,15 @@ class Field:
         if ftype == 'Boolean':        return bool
         if ftype == 'Bulk Format':    return list
         if ftype == 'Character':      return str
-        if ftype == 'Date':           return datetime.date
-        if ftype == 'Date or Time':   return datetime.datetime
+        if ftype == 'Date':           return Date
+        if ftype == 'Date or Time':   return DateTime
         if ftype == 'Integer':        return int
         if ftype == 'Integer/Real':   return float
         if ftype == 'Long Character': return str
-        if ftype == 'Month/Year':     return datetime.date
+        if ftype == 'Month/Year':     return Date
         if ftype == 'Price':          return float
         if ftype == 'Real':           return float
-        if ftype == 'Time':           return datetime.time
+        if ftype == 'Time':           return Time
 
         raise ValueError('Unknown type: %s, for mnemonic: %s' % (ftype, field))
 
