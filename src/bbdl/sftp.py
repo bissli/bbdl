@@ -13,7 +13,7 @@ from typing_extensions import List
 
 logger = logging.getLogger(__name__)
 
-__all__ = ['SFTPClient']
+__all__ = ['SFTPClient', 'Options']
 
 
 @dataclass

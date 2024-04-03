@@ -12,7 +12,7 @@ def test_basic_request():
 
     with make_tmpdir() as tmpdir:
         reqfile = os.path.join(tmpdir, 'reqfile.out')
-        opt = sftp.options(programflag='adhoc')
+        opt = sftp.Options(programflag='adhoc')
         sftp.Request.build(identifiers, fields, reqfile, opt)
         with open(reqfile, 'r') as f:
             resp = f.read()
