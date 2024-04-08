@@ -3,21 +3,26 @@ import copy
 import gzip
 import logging
 import os
+import re
 import time
 from dataclasses import dataclass, field
 
 from bbdl.parser import Field
-from libb import Date, attrdict, config, ftp
 from more_itertools import unique_everseen
 from typing_extensions import List
 
+import ftp
+from date import Date
+from libb import ConfigOptions, attrdict, get_tempdir, load_options
+
 logger = logging.getLogger(__name__)
+_tmpdir = get_tempdir()
 
 __all__ = ['SFTPClient', 'Options']
 
 
 @dataclass
-class Options:
+class Options(ConfigOptions):
 
     bval: bool = False
     headers: List = field(default_factory=list)
@@ -36,17 +41,11 @@ class Options:
     fields_path: str = 'fields.csv'
     remotedir: str = '/'
     secure: bool = True
+    port: int = 22
 
     def __post_init__(self):
         self.begdate = Date(self.begdate) if self.begdate else None
         self.enddate = Date(self.enddate) if self.enddate else None
-
-    @classmethod
-    def from_config(cls, sitename: str, config=None):
-        this = config
-        for level in sitename.split('.'):
-            this = getattr(this, level)
-        return cls(**this['ftp'])
 
 
 class SFTPClient:
@@ -62,10 +61,12 @@ class SFTPClient:
         `usernumber`:
 
     """
-    def __init__(self, account: str, config=config, **kwargs):
-        self.account = account
+    @load_options(cls=Options)
+    def __init__(self, options: str | dict | Options | None, /, config=None,
+                 account=None):
+        self.account = re.sub(r'.ftp$', '', account)
         self.config = config
-        self.options = Options.from_config(account, config=config)
+        self.options = options
 
     def __enter__(self):
         logger.debug('Entering SecureFTP client')
@@ -97,8 +98,8 @@ class SFTPClient:
         for part in range(nparts):
             logger.info(f'lookup part {part+1:02d} / {nparts:02d}')
             i = part*500
-            reqfile = os.path.join(config.tmpdir.dir, f'fprp{part:02d}.req')
-            respfile = os.path.join(config.tmpdir.dir, f'fprp{part:02d}.out')
+            reqfile = os.path.join(_tmpdir.dir, f'fprp{part:02d}.req')
+            respfile = os.path.join(_tmpdir.dir, f'fprp{part:02d}.out')
             Request.build(identifiers, fields[i:i+500], reqfile, opts)
             Request.send(self.cn, reqfile, respfile, opts)
             data, errors, columns = Request.parse(respfile)
@@ -267,7 +268,7 @@ END-OF-FILE
             found = [f for f in files if f.endswith(respname)]
             if found:
                 logger.debug('Retrieving output file...')
-                ftpcn.getbinary(respname, os.path.join(config.tmpdir.dir, respname))
+                ftpcn.getbinary(respname, os.path.join(_tmpdir.dir, respname))
                 if opts.compressed:
                     unzip(respfile)
                 break
@@ -362,13 +363,6 @@ END-OF-FILE
             data = [datamap[t] for t in tickers]
 
         return data, errors, list(columns.items())
-
-
-def get_site(account, config):
-    this = config
-    for level in account.split('.'):
-        this = getattr(this, level)
-    return this.ftp
 
 
 def unzip(zipfile):

@@ -1,8 +1,6 @@
 import os
 
-from libb.config import *
-
-Setting.unlock()
+from libb import Setting
 
 bbg = Setting()
 bbg.data.ftp.hostname = 'sftp.bloomberg.com'
@@ -14,5 +12,3 @@ bbg.data.ftp.usernumber = os.getenv('CONFIG_BBG_FTP_DATA_USERNUMBER')
 bbg.data.ftp.sn = os.getenv('CONFIG_BBG_FTP_DATA_SN')
 bbg.data.ftp.programflag = 'adhoc'
 bbg.data.ftp.secure = True
-
-Setting.lock()
