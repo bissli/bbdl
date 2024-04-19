@@ -2,8 +2,10 @@ import os
 
 import pytest
 from asserts import assert_equal
-from bbdl import sftp
+
 from libb.dir import make_tmpdir
+
+from bbdl import sftp
 
 
 def test_basic_request():
@@ -14,7 +16,7 @@ def test_basic_request():
         reqfile = os.path.join(tmpdir, 'reqfile.out')
         opt = sftp.Options(programflag='adhoc')
         sftp.Request.build(identifiers, fields, reqfile, opt)
-        with open(reqfile, 'r') as f:
+        with open(reqfile) as f:
             resp = f.read()
         expected = """\
 START-OF-FILE
