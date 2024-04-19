@@ -3,17 +3,16 @@ import copy
 import gzip
 import logging
 import os
-import re
 import time
 from dataclasses import dataclass, field
 
-from bbdl.parser import Field
 from more_itertools import unique_everseen
-from typing_extensions import List
 
 import ftp
 from date import Date
 from libb import ConfigOptions, attrdict, get_tempdir, load_options
+
+from bbdl.parser import Field
 
 logger = logging.getLogger(__name__)
 _tmpdir = get_tempdir()
@@ -25,7 +24,7 @@ __all__ = ['SFTPClient', 'Options']
 class Options(ConfigOptions):
 
     bval: bool = False
-    headers: List = field(default_factory=list)
+    headers: list = field(default_factory=list)
     begdate: Date | None = None
     enddate: Date | None = None
     compressed: bool = False
@@ -36,7 +35,7 @@ class Options(ConfigOptions):
     sn: str | None = None
     username: str | None = None
     usernumber: str | None = None
-    hostname: str | None = None
+    hostname: str = 'sftp.bloomberg.com'
     password: str | None = None
     fields_path: str = 'fields.csv'
     remotedir: str = '/'
@@ -223,8 +222,8 @@ END-OF-FILE
             f.write('START-OF-DATA\n')
             for iden in identifiers:
                 # bb tickers don't need a type, just the value
-                if not isinstance(iden, (tuple, list)) or len(iden) == 1 or iden[-1] is None:
-                    iden = iden[0] if isinstance(iden, (tuple, list)) else iden
+                if not isinstance(iden, tuple | list) or len(iden) == 1 or iden[-1] is None:
+                    iden = iden[0] if isinstance(iden, tuple | list) else iden
                     origkey = iden.split(' ')[-1]
                     capkey = origkey.capitalize()
                     # yellow keys must be properly cased
@@ -233,10 +232,10 @@ END-OF-FILE
                     f.write('%s\n' % iden)
                 # other identifiers need a value and a type
                 elif len(iden) == 2:
-                    f.write('%s|%s\n' % iden)
+                    f.write('{}|{}\n'.format(*iden))
                 # overrides need a list of field/value pairs
                 elif len(iden) > 3 and len(iden) % 2 == 0:
-                    f.write('%s|%s' % iden[:2])
+                    f.write('{}|{}'.format(*iden[:2]))
                     f.write('%d' % (len(iden) / 2 - 1))
                     f.write('|'.join([str(x) for x in iden[2:]]) + '\n')
                 else:
@@ -246,7 +245,7 @@ END-OF-FILE
             # trailer
             f.write(Request.REQUEST_TRAILER)
 
-        with open(reqfile, 'r') as f:
+        with open(reqfile) as f:
             logger.debug('Wrote request file:\n' + f.read())
 
     @staticmethod
@@ -277,7 +276,7 @@ END-OF-FILE
 
     @staticmethod
     def parse(path):
-        f = open(path, 'r')
+        f = open(path)
 
         # parse out the field names
         is_history = False
@@ -333,7 +332,7 @@ END-OF-FILE
             else:
                 msg = Request.ERROR_MESSAGE.get(flds[1])
                 if msg:
-                    logger.warning('Bloomberg Error %s%s: %s' % (flds[1], f' ({msg})', flds[0]))
+                    logger.warning('Bloomberg Error {}{}: {}'.format(flds[1], f' ({msg})', flds[0]))
                 row = attrdict(zip(status_fields, flds[:len(status_fields)]))
                 row.RETMSG = msg
                 errors.append(row)
