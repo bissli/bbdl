@@ -61,15 +61,19 @@ class SFTPClient:
 
     """
     @load_options(cls=Options)
-    def __init__(self, options: str | dict | Options | None, /, config=None,
-                 account=None):
-        self.account = re.sub(r'.ftp$', '', account)
+    def __init__(self, options: str | dict | Options | None = None, /, config=None):
         self.config = config
         self.options = options
 
     def __enter__(self):
         logger.debug('Entering SecureFTP client')
-        self.cn = ftp.connect(self.account, config=self.config)
+        _options = ftp.FtpOptions(
+            hostname=self.options.hostname,
+            username=self.options.username,
+            password=self.options.password,
+            secure=self.options.secure,
+            port=self.options.port)
+        self.cn = ftp.connect(_options)
         return self
 
     def __exit__(self, exc_ty, exc_val, tb):
