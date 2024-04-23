@@ -1,11 +1,10 @@
-import os
+from pathlib import Path
 
 import pytest
 from asserts import assert_equal
+from bbdl import Options, Request
 
 from libb.dir import make_tmpdir
-
-from bbdl import sftp
 
 
 def test_basic_request():
@@ -13,10 +12,10 @@ def test_basic_request():
     fields = ['ID_BB_GLOBAL', 'PARSEKYABLE_DES', 'PX_LAST']
 
     with make_tmpdir() as tmpdir:
-        reqfile = os.path.join(tmpdir, 'reqfile.out')
-        opt = sftp.Options(programflag='adhoc')
-        sftp.Request.build(identifiers, fields, reqfile, opt)
-        with open(reqfile) as f:
+        reqfile = Path(tmpdir) / 'reqfile.out'
+        options = Options(programflag='adhoc')
+        Request.build(identifiers, fields, reqfile, options)
+        with Path(reqfile).open('r') as f:
             resp = f.read()
         expected = """\
 START-OF-FILE

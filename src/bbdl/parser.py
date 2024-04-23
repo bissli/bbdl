@@ -4,7 +4,6 @@ import os
 import re
 import sys
 from pathlib import Path
-from typing import List
 
 from date import Date, DateTime, Time
 from libb import OrderedSet, attrdict, cachedstaticproperty, parse_number
@@ -40,7 +39,7 @@ class Field:
         if ftype == 'Real':           return float
         if ftype == 'Time':           return Time
 
-        raise ValueError('Unknown type: %s, for mnemonic: %s' % (ftype, field))
+        raise ValueError(f'Unknown type: {ftype}, for mnemonic: {field}')
 
     @staticmethod
     def to_python(field, value):
@@ -81,7 +80,7 @@ class Field:
         if ftype == 'Real':           return Field._to_number(value)
         if ftype == 'Time':           return to_time(value)
 
-        raise ValueError('Unknown type: %s, for mnemonic: %s' % (ftype, field))
+        raise ValueError(f'Unknown type: {ftype}, for mnemonic: {field}')
 
     @cachedstaticproperty
     def all_fields():
@@ -95,7 +94,7 @@ class Field:
         return fields
 
     @staticmethod
-    def from_categories(categories: List, invert: bool = False):
+    def from_categories(categories: list, invert: bool = False):
         """Return all fields in a category ex metadata fields
 
         >>> from pprint import pprint
@@ -121,7 +120,7 @@ class Field:
                           and _['Field Mnemonic'][:3] not in {'BH_', 'LU_'})
 
     @staticmethod
-    def to_categories(fields: List):
+    def to_categories(fields: list):
         """Map fields to categories. Useful for initial classification.
 
         >>> from pprint import pprint
@@ -241,7 +240,7 @@ class Field:
         if ftype == 9:          return to_date(s, fmt='%m/%y')
         if ftype == 10:         return Field._to_bool(s)
         if ftype == 12:         return Field._to_number(s)
-        raise ValueError('Unexpected field type: %s, value: %s' % (ftype, s))
+        raise ValueError(f'Unexpected field type: {ftype}, value: {s}')
 
     @cachedstaticproperty
     def _exception_convertrs():
