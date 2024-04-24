@@ -22,7 +22,6 @@ class Options(ConfigOptions):
     usernumber: str | None = None
     hostname: str = 'sftp.bloomberg.com'
     password: str | None = None
-    fields_path: str = 'fields.csv'
     remotedir: str = '/'
     secure: bool = True
     port: int = 22
