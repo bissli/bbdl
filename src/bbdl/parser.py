@@ -103,15 +103,15 @@ class Field:
         [...
         'LOW_EQY_DVD_YLD_12M',
         'NET_DEBT_TO_EBITDA',
-        'NORMALIZED_INCOME',
+        'NET_INT_INC_AFT_PROV',
         ...]
         >>> Field.to_categories(cat).count
-        {'Fundamentals': 11}
+        {'Fundamentals': 108}
 
         >>> len(Field.from_categories(['Fundamentals'], invert=False))
-        11
+        108
         >>> len(Field.from_categories(['Fundamentals'], invert=True))
-        44094
+        39768
         """
         filterfn = lambda a, b: a in b if not invert else a not in b
         return OrderedSet(_['Field Mnemonic']
@@ -126,21 +126,25 @@ class Field:
         >>> from pprint import pprint
         >>> pprint(Field.to_categories(Field.all_fields).count)
         {'Bram Fair Value Hierarchy Leveling Tool': 4,
-         'Corporate Actions': 825,
-         'Credit Risk': 356,
-         'Derived Data': 3010,
-         'End of Day Pricing': 1890,
+         'Corporate Actions': 848,
+         'Credit Risk': 355,
+         'Derived Data': 3007,
+         'End of Day Pricing': 1878,
          'Estimates': 1718,
-         'Fundamentals': 11,
+         'Fundamentals': 108,
+         'FundamentalsIndustrySpecific': 7,
          'Historical Time Series': 63,
-         'Not Downloadable': 3768,
+         'MiFIR': 2,
+         'Open Source': 1117,
          'Premium BRAM Transparency': 77,
          'Reg SSFA': 18,
-         'Security Master': 32455,
-         'User Entered Info.': 117}
+         'Regulatory & Risk Group 4 Misc': 1,
+         'Security Master': 31555,
+         'UK MIFI': 63,
+         'User Entered Info.': 123}
 
         >>> Field.to_categories(['ID_BB_UNIQUE', 'PX_ASK', 'PX_BID']).detail
-        {'Security Master': ['ID_BB_UNIQUE'], 'End of Day Pricing': ['PX_ASK', 'PX_BID']}
+        {'Open Source': ['ID_BB_UNIQUE'], 'End of Day Pricing': ['PX_ASK', 'PX_BID']}
         """
         count, count_detail = attrdict(), attrdict()
         for field in fields:
@@ -287,14 +291,14 @@ class Ticker:
         return True
 
 
-def get_assets_path(name, asset_folder='assets'):
+def get_assets_path(name, asset_folder='assets') -> Path:
     """Get absolute path to resource, works for python and for PyInstaller
 
     >>> f = get_assets_path('fields.csv')
     >>> assert os.path.isfile(f)
     """
     base_path = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
-    return os.path.join(base_path, os.path.join(asset_folder, name))
+    return Path(os.path.join(base_path, os.path.join(asset_folder, name)))
 
 
 if __name__ == '__main__':
