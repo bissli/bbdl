@@ -52,7 +52,8 @@ class SFTPClient:
             self.cn.close()
 
     def request(self, identifiers, fields, categories, bval=False,
-                headers=None, begdate=None, enddate=None) -> Result:
+                headers=None, begdate=None, enddate=None,
+                allowopen=True) -> Result:
         """Request Bloomberg `fields` over `identifiers`.
         """
         options = copy.deepcopy(self.options)
@@ -61,7 +62,7 @@ class SFTPClient:
         options.begdate = Date(begdate) if begdate else None
         options.enddate = Date(enddate) if enddate else None
 
-        fields = limit_fields_to_categories(fields, categories)
+        fields = limit_fields_to_categories(fields, categories, allowopen)
 
         # chunk 500 fields per request
         nparts = int((len(fields) - 1) / 500) + 1
@@ -78,11 +79,13 @@ class SFTPClient:
         return result
 
 
-def limit_fields_to_categories(reqfields, categories):
+def limit_fields_to_categories(reqfields, categories, allowopen=True):
     """Filter fields to avoid expensive mistakes
     """
     allfields = Field.from_categories(categories)
-    fields = sorted([f.upper() for f in reqfields if f.upper() in allfields])
+    if allowopen:
+        allfields = allfields | Field.open_fields
+    fields = sorted([f.upper() for f in reqfields if (f.upper() in allfields)])
     logger.info(f'Filtered {len(reqfields)} request fields to {len(fields)} match fields.')
     return fields
 

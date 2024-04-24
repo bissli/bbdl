@@ -94,7 +94,7 @@ class Field:
         return fields
 
     @staticmethod
-    def from_categories(categories: list, invert: bool = False):
+    def from_categories(categories: list, invert: bool = False) -> OrderedSet:
         """Return all fields in a category ex metadata fields
 
         >>> from pprint import pprint
@@ -156,6 +156,23 @@ class Field:
             count_detail[category] = count_detail.get(category, [])+[field]
         res = attrdict(count=count, detail=count_detail)
         return res
+
+    @cachedstaticproperty
+    def open_fields() -> OrderedSet:
+        """Open fields do not incur a charge.
+
+        >>> gratis = Field.open_fields()
+        >>> type(gratis)
+        <class ...OrderedSet'>
+        >>> len(gratis)
+        1240
+        >>> 'PARSEKYABLE_DES' in gratis
+        True
+        """
+        all_categories = Field.to_categories(Field.all_fields).detail
+        return OrderedSet(
+            all_categories['Open Source'] +
+            all_categories['User Entered Info.'])
 
     @staticmethod
     def _to_number(value):
