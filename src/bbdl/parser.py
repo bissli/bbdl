@@ -8,13 +8,21 @@ from pathlib import Path
 from date import Date, DateTime, Time
 from libb import OrderedSet, attrdict, cachedstaticproperty, parse_number
 
-to_date = lambda x, fmt=None: Date.parse(x, fmt=fmt, raise_err=True)
-to_datetime = lambda x, fmt=None: DateTime.parse(x, fmt=fmt, raise_err=True)
-to_time = lambda x, fmt=None: Time.parse(x, fmt=fmt, raise_err=True)
-
 logger = logging.getLogger(__name__)
 
 __all__ = ['Field', 'Ticker']
+
+
+def to_date(x, fmt=None) -> Date:
+    return Date.parse(x, fmt=fmt, raise_err=True)
+
+
+def to_datetime(x, fmt=None) -> DateTime:
+    return DateTime.parse(x, fmt=fmt, raise_err=True)
+
+
+def to_time(x, fmt=None) -> Time:
+    return Time.parse(x, fmt=fmt, raise_err=True)
 
 
 class Field:
