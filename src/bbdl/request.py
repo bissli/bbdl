@@ -290,8 +290,8 @@ def _parse(f: io.TextIOBase):
             for fld, val in row.items():
                 try:
                     row[fld] = Field.to_python(fld, val)
-                except:
-                    logger.debug(f'Error converting fld={fld}, val={val}')
+                except Exception as exc:
+                    logger.debug(f'Error converting fld={fld}, val={val}: {str(exc)}')
                     row[fld] = None
                 try:
                     res.columns.append((fld, Field.to_type(fld)))
