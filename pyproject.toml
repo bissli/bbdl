@@ -10,14 +10,14 @@ python = "~3.11"
 
 more-itertools = "*"
 
-libb-ftp = { git = "https://github.com/bissli/libb-ftp" }
-libb-log = { git = "https://github.com/bissli/libb-log", optional = true }
+libb-ftp = { git = "https://github.com/bissli/libb-ftp", rev = "master" }
+libb-log = { git = "https://github.com/bissli/libb-log", optional = true, rev = "master" }
 
 pytest = { version = "*", optional = true }
 asserts = { version = "*", optional = true }
 docker = { version = "*", optional = true }
 pytest-mock = { version = "*", optional = true }
-pdbpp = { git = "https://github.com/pdbpp/pdbpp", optional = true }
+pdbpp = { git = "https://github.com/pdbpp/pdbpp", optional = true, rev = "master" }
 
 [tool.poetry.extras]
 test = [
