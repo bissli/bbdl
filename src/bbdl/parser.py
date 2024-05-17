@@ -108,18 +108,17 @@ class Field:
         >>> from pprint import pprint
         >>> cat = list(Field.from_categories(['Fundamentals']))
         >>> pprint(cat)
-        [...
-        'LOW_EQY_DVD_YLD_12M',
-        'NET_DEBT_TO_EBITDA',
-        'NET_INT_INC_AFT_PROV',
-        ...]
+        ['3YR_AVG_NET_MARGIN',
+         ...
+        'ZAKAT_EXPENSES_OTHER_RESRV_CHARG']
+
         >>> Field.to_categories(cat).count
-        {'Fundamentals': 108}
+        {'Fundamentals': 10428}
 
         >>> len(Field.from_categories(['Fundamentals'], invert=False))
-        108
+        10428
         >>> len(Field.from_categories(['Fundamentals'], invert=True))
-        39768
+        33322
         """
         filterfn = lambda a, b: a in b if not invert else a not in b
         return OrderedSet(_['Field Mnemonic']
@@ -133,26 +132,74 @@ class Field:
 
         >>> from pprint import pprint
         >>> pprint(Field.to_categories(Field.all_fields).count)
-        {'Bram Fair Value Hierarchy Leveling Tool': 4,
-         'Corporate Actions': 848,
-         'Credit Risk': 355,
-         'Derived Data': 3007,
-         'End of Day Pricing': 1878,
-         'Estimates': 1718,
-         'Fundamentals': 108,
-         'FundamentalsIndustrySpecific': 7,
-         'Historical Time Series': 63,
-         'MiFIR': 2,
-         'Open Source': 1117,
-         'Premium BRAM Transparency': 77,
-         'Reg SSFA': 18,
-         'Regulatory & Risk Group 4 Misc': 1,
-         'Security Master': 31555,
-         'UK MIFI': 63,
-         'User Entered Info.': 123}
+        {'ATM Volatility': 2,
+        'ATMOTM Swaption': 3,
+        'BCurve': 1,
+        'Basic Tax': 8,
+        'BenchmarkRegulation': 59,
+        'Bram Fair Value Hierarchy Leveling Tool': 4,
+        'CAPFloor Volatility': 3,
+        'Central Bank Eligibility': 4,
+        'Climate Risk Assessment': 2,
+        'Collateral Tagging': 37,
+        'Corporate Actions': 852,
+        'Covered Funds': 6,
+        'Credit Benchmark & Consensus Rating': 31,
+        'Credit Risk Capital Structure': 129,
+        'Credit Risk Corporate Structure': 222,
+        'Credit Risk Regulatory Compliance': 43,
+        'Default Risk': 106,
+        'Derived - End of Day': 1101,
+        'Derived - Intraday': 1590,
+        'ESG Book': 341,
+        'ESG Climate': 316,
+        'ESG Regulation': 104,
+        'ESG Reported': 2763,
+        'ESGScores': 897,
+        'Estimates': 1742,
+        'Expected Credit Loss': 15,
+        'FRTB SA Bucketing': 162,
+        'FRTBRFETData': 28,
+        'Fund Analytics': 24,
+        'Fund ESG Analytics': 93,
+        'Fundamentals': 10428,
+        'FundamentalsIndustrySpecific': 8675,
+        'FundamentalsSegmentation': 208,
+        'High Quality Liquid Assets': 26,
+        'Historical Time Series': 93,
+        'Holiday Pricing': 5,
+        'IFRS 9 SPPI': 3,
+        'Implied Dividend': 4,
+        'Investor Protection': 108,
+        'Kestrel': 17,
+        'Liquidity Assessment': 78,
+        'MSCI ESG': 992,
+        'MiFIR': 131,
+        'Not Downloadable': 2198,
+        'Open Source': 1121,
+        'Packaged': 145,
+        'Portfolio Holdings': 2,
+        'Premium BRAM Transparency': 77,
+        'Pricing - End of Day': 1581,
+        'Pricing - Intraday': 862,
+        'Primary Market': 88,
+        'Reg SSFA': 20,
+        'Regulatory & Risk Group 2 Misc': 55,
+        'Regulatory & Risk Group 3 Misc': 28,
+        'Regulatory & Risk Group 4 Misc': 61,
+        'Sanctions': 140,
+        'Securities Financing Transactions Regulation': 9,
+        'Security Master': 6431,
+        'SecurityOwnership': 5,
+        'SupplyChain': 21,
+        'Sustainalytics ESG': 286,
+        'UK MIFI': 63,
+        'US Withholding Tax': 38,
+        'User Entered Info.': 133,
+        'Volatility Surface': 3}
 
         >>> Field.to_categories(['ID_BB_UNIQUE', 'PX_ASK', 'PX_BID']).detail
-        {'Open Source': ['ID_BB_UNIQUE'], 'End of Day Pricing': ['PX_ASK', 'PX_BID']}
+        {'Open Source': ['ID_BB_UNIQUE'], 'Pricing - Intraday': ['PX_ASK', 'PX_BID']}
         """
         count, count_detail = attrdict(), attrdict()
         for field in fields:
