@@ -1,3 +1,10 @@
+import io
+
+__all__ = ['get_fields']
+
+
+def get_fields():
+    return io.StringIO("""
 Field Mnemonic,Data License Category,Comdty,Equity,Muni,Pfd,M-Mkt,Govt,Corp,Index,Curncy,Mtge,Field Type,Width
 %_GROSS_ANN_RNTREV_EXP_SF_IN_10Y,FundamentalsIndustrySpecific, ,Equity, ,Pfd, , ,Corp, , , ,Real,30
 %_GROSS_ANN_RNTREV_EXP_SF_IN_6Y,FundamentalsIndustrySpecific, ,Equity, ,Pfd, , ,Corp, , , ,Real,30
@@ -44822,3 +44829,4 @@ Z_SPRD_BID,Derived - Intraday, , , ,Pfd, ,Govt,Corp, , ,Mtge,Real,30
 Z_SPRD_MID,Derived - Intraday, , , ,Pfd, ,Govt,Corp, , ,Mtge,Real,30
 Z_SPREAD,Derived - End of Day, , , , , ,Govt,Corp, , , ,Real,30
 Z_SPREAD_PRICE,Pricing - End of Day, , , , , ,Govt,Corp, , , ,Price,30
+    """.strip())

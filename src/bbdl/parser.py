@@ -1,10 +1,8 @@
 import csv
 import logging
-import os
 import re
-import sys
-from pathlib import Path
 
+from bbdl.assets import get_fields
 from date import Date, DateTime, Time
 from libb import OrderedSet, attrdict, cachedstaticproperty, parse_number
 
@@ -73,7 +71,7 @@ class Field:
         try:
             ftype = Field.all_fields[field.upper()]['Field Type']
         except KeyError:
-            raise ValueError('Unknown field: %s' % field)
+            raise ValueError(f'Unknown field: {field}')
 
         if ftype == 'Boolean':        return Field._to_bool(value)
         if ftype == 'Bulk Format':    return Field._to_list(value)
@@ -93,7 +91,7 @@ class Field:
     @cachedstaticproperty
     def all_fields():
         fields = {}
-        with Path.open(get_assets_path('fields.csv'), 'r') as f:
+        with get_fields() as f:
             reader = csv.reader(f)
             header = next(reader)
             for line in reader:
@@ -251,9 +249,7 @@ class Field:
     @staticmethod
     def _to_bool(value):
         value = Field._to_str(value)
-        if value and value.upper()[0] in {'1', 'T', 'Y'}:
-            return True
-        return False
+        return bool(value and value.upper()[0] in {'1', 'T', 'Y'})
 
     @staticmethod
     def _to_list(s):
@@ -358,19 +354,7 @@ class Ticker:
         bits = ticker.split(' ')
         if len(bits) < 2:
             return False
-        if bits[-1] not in YELLOW_KEYS:
-            return False
-        return True
-
-
-def get_assets_path(name, asset_folder='assets') -> Path:
-    """Get absolute path to resource, works for python and for PyInstaller
-
-    >>> f = get_assets_path('fields.csv')
-    >>> assert os.path.isfile(f)
-    """
-    base_path = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
-    return Path(os.path.join(base_path, os.path.join(asset_folder, name)))
+        return not bits[-1] not in YELLOW_KEYS
 
 
 if __name__ == '__main__':
