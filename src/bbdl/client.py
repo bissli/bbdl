@@ -3,7 +3,7 @@ import copy
 import logging
 
 import ftp
-from bbdl.options import Options
+from bbdl.options import BbdlOptions
 from bbdl.parser import Field
 from bbdl.request import Request, Result
 from date import Date
@@ -27,8 +27,8 @@ class SFTPClient:
         `usernumber`:
 
     """
-    @load_options(cls=Options)
-    def __init__(self, options: str | dict | Options | None = None, /, config=None):
+    @load_options(cls=BbdlOptions)
+    def __init__(self, options: str | dict | BbdlOptions | None = None, /, config=None):
         self.config = config
         self.options = options
 

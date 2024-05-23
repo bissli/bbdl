@@ -6,9 +6,8 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from bbdl.options import Options
+from bbdl.options import BbdlOptions
 from bbdl.parser import Field
-
 from libb import attrdict, unique
 
 __all__ = ['Request']
@@ -19,6 +18,10 @@ TERMINAL_HEADER = """\
 USERNUMBER={usernumber}
 SN={sn}
 WS={ws}
+"""
+
+TERMINAL_HEADER_BBA = """\
+USERNUMBER={usernumber}
 """
 
 REQUEST_HEADER = """\
@@ -115,7 +118,7 @@ class Request:
     """
 
     @staticmethod
-    def build(identifiers: list, fields: list, reqfile: Path, options: Options):
+    def build(identifiers: list, fields: list, reqfile: Path, options: BbdlOptions):
         """Build request.
 
         See tests for details.
@@ -151,7 +154,9 @@ class Request:
                 f.write('\n'.join(headers) + '\n')
             if options.compressed and COMPRESS_FLAG not in headers:
                 f.write(COMPRESS_FLAG + '\n')
-            if options.sn and options.usernumber:
+            if options.usernumber and options.is_bba:
+                f.write(TERMINAL_HEADER_BBA.format(**options.__dict__))
+            elif options.usernumber:
                 f.write(TERMINAL_HEADER.format(**options.__dict__))
             f.write('\n')
             # fields
@@ -193,12 +198,12 @@ class Request:
         return reqfile
 
     @staticmethod
-    def send(ftpcn, reqfile: Path, respfile: Path, options: Options):
+    def send(ftpcn, reqfile: Path, respfile: Path, options: BbdlOptions):
         reqname = reqfile.name
         respname = respfile.name
         if options.compressed:
             respfile = Path(respfile.parts[:-1]+respfile.parts[-1]+'.gz')
-            respname = respname + '.gz'
+            respname += '.gz'
         # send request
         with contextlib.suppress(Exception):
             ftpcn.delete(respname)

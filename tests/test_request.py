@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 from asserts import assert_equal
-from bbdl import Options, Request
+from bbdl import BbdlOptions, Request
 
 from libb.dir import make_tmpdir
 
@@ -13,7 +13,7 @@ def test_basic_request():
 
     with make_tmpdir() as tmpdir:
         reqfile = Path(tmpdir) / 'reqfile.out'
-        options = Options(programflag='adhoc')
+        options = BbdlOptions(programflag='adhoc')
         Request.build(identifiers, fields, reqfile, options)
         with Path(reqfile).open('r') as f:
             resp = f.read()
