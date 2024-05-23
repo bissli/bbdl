@@ -29,6 +29,7 @@ class Options(ConfigOptions):
     delimiter: str = '|'
     wait_time: int = 20
     sn: str | None = None
+    ws: str | None = None
     username: str | None = None
     usernumber: str | None = None
     hostname: str = 'sftp.bloomberg.com'
@@ -42,6 +43,8 @@ class Options(ConfigOptions):
         self.begdate = Date(self.begdate) if self.begdate else None
         self.enddate = Date(self.enddate) if self.enddate else None
         assert self.programflag in {'oneshot', 'adhoc'}
+        if self.sn or self.ws:
+            assert self.sn and self.ws, 'SN/WS = IAM (S/N): <prefix>-<suffix>'
         if self.tempdir is None:
             self.tempdir = get_tempdir().dir
         self.tempdir = Path(self.tempdir)

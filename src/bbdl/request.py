@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 TERMINAL_HEADER = """\
 USERNUMBER={usernumber}
 SN={sn}
-WS=1
+WS={ws}
 """
 
 REQUEST_HEADER = """\
