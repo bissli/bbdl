@@ -100,6 +100,15 @@ class Field:
         return fields
 
     @staticmethod
+    def limit_fields_to_categories(reqfields, categories):
+        """Filter fields to avoid expensive mistakes
+        """
+        allfields = Field.from_categories(categories) | Field.open_fields
+        fields = sorted([f.upper() for f in reqfields if (f.upper() in allfields)])
+        logger.info(f'Filtered {len(reqfields)} request fields to {len(fields)} match fields.')
+        return fields
+
+    @staticmethod
     def from_categories(categories: list, invert: bool = False) -> OrderedSet:
         """Return all fields in a category ex metadata fields
 
@@ -117,6 +126,9 @@ class Field:
         10428
         >>> len(Field.from_categories(['Fundamentals'], invert=True))
         33322
+
+        >>> list(Field.from_categories([]))
+        []
         """
         filterfn = lambda a, b: a in b if not invert else a not in b
         return OrderedSet(_['Field Mnemonic']

@@ -4,7 +4,6 @@ import logging
 
 import ftp
 from bbdl.options import BbdlOptions
-from bbdl.parser import Field
 from bbdl.request import Request, Result
 from date import Date
 from libb import load_options
@@ -50,8 +49,15 @@ class SFTPClient:
         with contextlib.suppress(Exception):
             self.cn.close()
 
-    def request(self, sids, fields, categories, bval=False,
-                headers=None, begdate=None, enddate=None) -> Result:
+    def request(
+        self,
+        sids,
+        fields,
+        bval=False,
+        headers=None,
+        begdate=None,
+        enddate=None,
+    ) -> Result:
         """Request Bloomberg `fields` over `identifiers`.
         """
         options = copy.deepcopy(self.options)
@@ -59,8 +65,6 @@ class SFTPClient:
         options.headers = headers
         options.begdate = Date(begdate) if begdate else None
         options.enddate = Date(enddate) if enddate else None
-
-        fields = limit_fields_to_categories(fields, categories)
 
         # chunk 500 fields per request
         nparts = int((len(fields) - 1) / 500) + 1
@@ -75,15 +79,6 @@ class SFTPClient:
             _result = Request.parse(respfile)
             result.extend(_result)
         return result
-
-
-def limit_fields_to_categories(reqfields, categories):
-    """Filter fields to avoid expensive mistakes
-    """
-    allfields = Field.from_categories(categories) | Field.open_fields
-    fields = sorted([f.upper() for f in reqfields if (f.upper() in allfields)])
-    logger.info(f'Filtered {len(reqfields)} request fields to {len(fields)} match fields.')
-    return fields
 
 
 if __name__ == '__main__':
