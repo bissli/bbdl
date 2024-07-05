@@ -63,8 +63,8 @@ class SFTPClient:
         options = copy.deepcopy(self.options)
         options.bval = bval
         options.headers = headers
-        options.begdate = Date(begdate) if begdate else None
-        options.enddate = Date(enddate) if enddate else None
+        options.begdate = Date.instance(begdate) if begdate else None
+        options.enddate = Date.instance(enddate) if enddate else None
 
         # chunk 500 fields per request
         nparts = int((len(fields) - 1) / 500) + 1
