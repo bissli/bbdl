@@ -6,7 +6,7 @@ authors = ["bissli <bissli@xyz.com>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = "~3.11"
+python = "^3.9"
 
 more-itertools = "*"
 
@@ -17,6 +17,7 @@ pytest = { version = "*", optional = true }
 asserts = { version = "*", optional = true }
 docker = { version = "*", optional = true }
 pytest-mock = { version = "*", optional = true }
+wrapt = { version = '*', optional = true }
 pdbpp = { git = "https://github.com/pdbpp/pdbpp", optional = true, rev = "master" }
 
 [tool.poetry.extras]
@@ -27,6 +28,7 @@ test = [
   "libb-log",
   "docker",
   "pytest-mock",
+  "wrapt",
 ]
 
 [build-system]
