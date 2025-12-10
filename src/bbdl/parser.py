@@ -1,4 +1,5 @@
 import csv
+import datetime
 import logging
 import re
 
@@ -12,11 +13,17 @@ __all__ = ['Field', 'Ticker']
 
 
 def to_date(x, fmt=None) -> Date:
-    return Date.parse(x, fmt=fmt, raise_err=True)
+    if fmt:
+        dt = datetime.datetime.strptime(x, fmt)
+        return Date.instance(dt, raise_err=True)
+    return Date.parse(x, raise_err=True)
 
 
 def to_datetime(x, fmt=None) -> DateTime:
-    return DateTime.parse(x, fmt=fmt, raise_err=True)
+    if fmt:
+        dt = datetime.datetime.strptime(x, fmt)
+        return DateTime.instance(dt, raise_err=True)
+    return DateTime.parse(x, raise_err=True)
 
 
 def to_time(x, fmt=None) -> Time:
