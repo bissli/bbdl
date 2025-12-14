@@ -250,11 +250,12 @@ class Field:
     def _to_number(value):
         try:
             return parse_number(str(value))
-        except:
+        except Exception:
             try:
                 return float(value)
-            except:
-                pass
+            except Exception as e:
+                logging.warning(f'Failed to parse number: {value!r} - {e}')
+                return None
 
     @staticmethod
     def _to_str(value):
@@ -316,8 +317,8 @@ class Field:
                     items.append(item[0])
                 else:
                     items.append(tuple(item))
-        except:
-            logging.exception('Error parsing bulk field, skipping remainder')
+        except Exception as e:
+            logging.error(f'Error parsing bulk field: {e}')
         return items
 
     @staticmethod

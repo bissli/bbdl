@@ -296,12 +296,12 @@ def _parse(f: io.TextIOBase):
                 try:
                     row[fld] = Field.to_python(fld, val)
                 except Exception as exc:
-                    logger.debug(f'Error converting fld={fld}, val={val}: {str(exc)}')
+                    logger.warning(f'Error converting fld={fld}, val={val}: {str(exc)}')
                     row[fld] = None
                 try:
                     res.columns.append((fld, Field.to_type(fld)))
-                except:
-                    res.columns.apppend((fld, object))
+                except Exception:
+                    res.columns.append((fld, object))
             res.data.append(row)
         else:
             msg = ERROR_MESSAGE.get(flds[1])
