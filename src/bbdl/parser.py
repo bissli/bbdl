@@ -11,22 +11,39 @@ logger = logging.getLogger(__name__)
 
 __all__ = ['Field', 'Ticker']
 
+NULL_VALUES = {'', 'N.A.', 'N.D.', 'N.S.', 'NaN', 'None'}
 
-def to_date(x, fmt=None) -> Date:
+
+def _is_null(value) -> bool:
+    """Check if value is a Bloomberg null-like value."""
+    if not value:
+        return True
+    if isinstance(value, str):
+        return value.strip() in NULL_VALUES
+    return False
+
+
+def to_date(x, fmt=None) -> Date | None:
+    if _is_null(x):
+        return None
     if fmt:
         dt = datetime.datetime.strptime(x, fmt)
         return Date.instance(dt, raise_err=True)
     return Date.parse(x, raise_err=True)
 
 
-def to_datetime(x, fmt=None) -> DateTime:
+def to_datetime(x, fmt=None) -> DateTime | None:
+    if _is_null(x):
+        return None
     if fmt:
         dt = datetime.datetime.strptime(x, fmt)
         return DateTime.instance(dt, raise_err=True)
     return DateTime.parse(x, raise_err=True)
 
 
-def to_time(x, fmt=None) -> Time:
+def to_time(x, fmt=None) -> Time | None:
+    if _is_null(x):
+        return None
     return Time.parse(x, fmt=fmt, raise_err=True)
 
 
@@ -248,6 +265,8 @@ class Field:
 
     @staticmethod
     def _to_number(value):
+        if _is_null(value):
+            return None
         try:
             return parse_number(str(value))
         except Exception:
@@ -259,12 +278,9 @@ class Field:
 
     @staticmethod
     def _to_str(value):
-        if not value:
-            return
-        value = value.strip()
-        if value in {'', 'N.A.', 'N.D.', 'N.S.'}:
-            return
-        return value
+        if _is_null(value):
+            return None
+        return value.strip()
 
     @staticmethod
     def _to_bool(value):
