@@ -11,7 +11,8 @@ logger = logging.getLogger(__name__)
 
 __all__ = ['Field', 'Ticker']
 
-NULL_VALUES = {'', 'N.A.', 'N.D.', 'N.S.', 'NaN', 'None'}
+NULL_VALUES = {'', 'N.A.', 'N.D.', 'N.S.', 'NaN', 'None',
+               'UNSPEC', 'BEFORE MKT', 'AFTER MKT'}
 
 
 def _is_null(value) -> bool:
