@@ -150,24 +150,31 @@ class SFTPClient:
         return result
 
     def _fetch_by_date(self, target_date: Date) -> Result:
-        """Find and download existing file for target_date.
+        """Find and download all files for target_date, combining results.
 
         Files contain RUNDATE header - match against target_date.
         """
         files = self.cn.files()
+        result = Result()
+        matched_files = []
 
         for filename in files:
-            if not filename.endswith('.out'):
+            if '.out' not in filename or not filename.startswith('fprp'):
                 continue
             localpath = self.options.tempdir / filename
             self.cn.getbinary(filename, localpath)
 
             rundate = _parse_rundate(localpath)
             if rundate == target_date:
-                logger.info(f'Found file {filename} for date {target_date}')
-                return Request.parse(localpath)
+                matched_files.append(filename)
+                _result = Request.parse(localpath)
+                result.extend(_result)
 
-        raise FileNotFoundError(f'No file found for date {target_date}')
+        if not matched_files:
+            raise FileNotFoundError(f'No file found for date {target_date}')
+
+        logger.info(f'Found {len(matched_files)} files for date {target_date}: {matched_files}')
+        return result
 
 
 if __name__ == '__main__':
