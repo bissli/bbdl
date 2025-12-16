@@ -161,8 +161,7 @@ class Request:
             f.write('\n')
             # fields
             f.write('START-OF-FIELDS\n')
-            for fld in fields:
-                f.write(fld + '\n')
+            f.writelines(fld + '\n' for fld in fields)
             f.write('END-OF-FIELDS\n')
             f.write('\n')
             # identifiers
@@ -182,11 +181,11 @@ class Request:
                     f.write('{}|{}\n'.format(*iden))
                 # overrides need a list of field/value pairs
                 elif len(iden) > 3 and len(iden) % 2 == 0:
-                    f.write('{}|{}'.format(*iden[:2]))
-                    f.write(f'{int(len(iden) / 2 - 1)}')
+                    f.write('{}|{}|'.format(*iden[:2]))
+                    f.write(f'{int(len(iden) / 2 - 1)}|')
                     f.write('|'.join([str(x) for x in iden[2:]]) + '\n')
                 else:
-                    raise ValueError('Unexpected idtype format: %s' + str(iden))
+                    raise ValueError(f'Unexpected idtype format: {iden}')
             f.write('END-OF-DATA\n')
             f.write('\n')
             # trailer
@@ -201,8 +200,10 @@ class Request:
     def send(ftpcn, reqfile: Path, respfile: Path, options: BbdlOptions):
         reqname = reqfile.name
         respname = respfile.name
-        if options.compressed:
-            respfile = Path(respfile.parts[:-1]+respfile.parts[-1]+'.gz')
+        # Bloomberg always compresses gethistory responses regardless of COMPRESS setting
+        is_history = options.begdate or options.enddate
+        if options.compressed or is_history:
+            respfile = respfile.parent / (respfile.name + '.gz')
             respname += '.gz'
         # send request
         with contextlib.suppress(Exception):
@@ -217,7 +218,7 @@ class Request:
             if found:
                 logger.debug('Retrieving output file...')
                 ftpcn.getbinary(respname, respfile)
-                if options.compressed:
+                if options.compressed or is_history:
                     _unzip(respfile)
                 break
         else:
@@ -240,11 +241,11 @@ class Request:
 
 
 def _unzip(zipfile: Path):
-    """Unzip the file and and leave it in place of the .gz version
+    """Unzip the file and leave it in place of the .gz version
     """
-    unzipfile = Path(zipfile.parts[:-1]+zipfile.parts[-1][:-3])  # assume .gz
-    with Path(unzipfile).open('w') as f:
-        f.write(gzip.open(zipfile.as_posix()).read())
+    unzipfile = zipfile.parent / zipfile.name[:-3]  # assume .gz
+    with gzip.open(zipfile, 'rt') as gz, Path(unzipfile).open('w') as f:
+        f.write(gz.read())
     zipfile.unlink(missing_ok=True)
 
 
