@@ -135,7 +135,7 @@ class Request:
             headers.extend([
                     HISTORY_PROGRAM,
                     'HIST_FORMAT=horizontal',
-                    f'DATERANGE={options.begdate:"%Y%m%d"}|{options.enddate:"%Y%m%d"}',
+                    f'DATERANGE={options.begdate:%Y%m%d}|{options.enddate:%Y%m%d}',
                     ])
         else:
             headers.extend([
