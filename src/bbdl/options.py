@@ -12,6 +12,7 @@ programflag: when using `oneshot` Bloomberg will lock for four months the
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from bbdl.exceptions import BbdlValidationError
 from date import Date
 from libb import ConfigOptions, get_tempdir
 
@@ -45,7 +46,8 @@ class BbdlOptions(ConfigOptions):
     def __post_init__(self):
         self.begdate = Date(self.begdate) if self.begdate else None
         self.enddate = Date(self.enddate) if self.enddate else None
-        assert self.programflag in {'oneshot', 'adhoc'}
+        if self.programflag not in {'oneshot', 'adhoc'}:
+            raise BbdlValidationError(f"programflag must be 'oneshot' or 'adhoc', got '{self.programflag}'")
         if is_terminal(self):
             terminal_bba(self) if self.is_bba else terminal_open(self)
         if self.tempdir is None:
@@ -63,8 +65,10 @@ def terminal_open(options):
     From the field S/N: SN is the prefix before the dash. WS is the suffix
     after the dash.
     """
-    assert options.sn, 'SN must be provided'
-    assert options.ws, 'WS must be provided'
+    if not options.sn:
+        raise BbdlValidationError('SN must be provided for terminal linking')
+    if not options.ws:
+        raise BbdlValidationError('WS must be provided for terminal linking')
 
 
 def terminal_bba(options):
@@ -76,7 +80,8 @@ def terminal_bba(options):
     impact the processing of the request.
     """
     options.sn = options.ws = None
-    assert options.usernumber, 'Usernumber must be included'
+    if not options.usernumber:
+        raise BbdlValidationError('Usernumber must be provided for BBA terminal linking')
 
 
 if __name__ == '__main__':
