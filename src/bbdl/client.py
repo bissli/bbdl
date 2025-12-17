@@ -150,6 +150,9 @@ class SFTPClient:
             Request.send(self.cn, reqfile, respfile, options)
             _result = Request.parse(respfile)
             result.extend(_result)
+
+        # Normalize data: historical files wrap values in lists, non-historical don't
+        result.unwrap_single_element_lists()
         return result
 
     def _fetch_by_date(self, target_date: Date) -> Result:

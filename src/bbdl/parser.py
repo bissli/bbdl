@@ -18,11 +18,18 @@ NULL_VALUES = {'', 'N.A.', 'N.D.', 'N.S.', 'NaN', 'None',
 
 def _is_null(value) -> bool:
     """Check if value is a Bloomberg null-like value."""
-    if not value:
+    if value is None:
         return True
+    if isinstance(value, list):
+        return len(value) == 0 or all(_is_null(v) for v in value)
     if isinstance(value, str):
+        if not value:
+            return True
         return value.strip() in NULL_VALUES
-    return False
+    # For numbers, 0 is not null
+    if isinstance(value, (int, float)):
+        return False
+    return bool(not value)
 
 
 def to_date(x, fmt=None) -> Date | None:
@@ -365,9 +372,25 @@ class Field:
             'RETCODE': Field._to_number,
             'NFIELDS': Field._to_number,
             'DATE': to_date,
-            'CNTRY_OF_DOMICILE': lambda x: re.sub(r'[^A-Z]', r'', x),  # remove noise
+            'CNTRY_OF_DOMICILE': Field._to_country_code,
+            'COUNTRY_ISO': Field._to_country_code,
             'CPN': Field._to_number,
         }
+
+    @staticmethod
+    def _to_country_code(value) -> str | None:
+        """Convert country code, removing noise characters."""
+        if _is_null(value):
+            return None
+        if isinstance(value, list):
+            # Take first non-null value from list
+            for v in value:
+                if not _is_null(v):
+                    return Field._to_country_code(v)
+            return None
+        if not isinstance(value, str):
+            return None
+        return re.sub(r'[^A-Z]', r'', value) or None
 
 
 YELLOW_KEYS = ('Comdty', 'Equity', 'Muni', 'Pfd', 'M-Mkt',

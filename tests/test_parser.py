@@ -29,6 +29,28 @@ class TestIsNull:
         assert _is_null('123') is False
         assert _is_null('hello') is False
 
+    def test_empty_list(self):
+        assert _is_null([]) is True
+
+    def test_list_of_nulls(self):
+        assert _is_null([None, None, None]) is True
+        assert _is_null(['N.A.', 'N.D.']) is True
+
+    def test_list_with_valid_value(self):
+        assert _is_null([None, 'value']) is False
+        assert _is_null(['N.A.', 'valid']) is False
+
+    def test_list_with_all_valid(self):
+        assert _is_null(['a', 'b', 'c']) is False
+
+    def test_zero_is_not_null(self):
+        assert _is_null(0) is False
+        assert _is_null(0.0) is False
+
+    def test_single_element_list(self):
+        assert _is_null([None]) is True
+        assert _is_null(['value']) is False
+
 
 class TestToDate:
     """Test to_date function."""
@@ -163,6 +185,40 @@ class TestFieldToList:
 
     def test_invalid_format(self):
         assert Field._to_list('not a bulk field') is None
+
+
+class TestFieldToCountryCode:
+    """Test Field._to_country_code method."""
+
+    def test_valid_country_code(self):
+        assert Field._to_country_code('US') == 'US'
+        assert Field._to_country_code('GB') == 'GB'
+
+    def test_null_values(self):
+        assert Field._to_country_code(None) is None
+        assert Field._to_country_code('') is None
+        assert Field._to_country_code('N.A.') is None
+
+    def test_removes_noise(self):
+        # Bloomberg sometimes adds extra characters
+        assert Field._to_country_code('US1') == 'US'
+        assert Field._to_country_code('GB/') == 'GB'
+
+    def test_list_takes_first_valid(self):
+        assert Field._to_country_code([None, 'US', 'GB']) == 'US'
+        assert Field._to_country_code(['N.A.', None, 'CA']) == 'CA'
+
+    def test_list_all_null(self):
+        assert Field._to_country_code([None, None, None]) is None
+        assert Field._to_country_code(['N.A.', 'N.D.']) is None
+
+    def test_non_string_returns_none(self):
+        assert Field._to_country_code(123) is None
+        assert Field._to_country_code(12.34) is None
+
+    def test_empty_after_cleanup(self):
+        # If only noise characters, return None
+        assert Field._to_country_code('123') is None
 
 
 class TestTickerFixCase:

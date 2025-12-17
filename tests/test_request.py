@@ -1,12 +1,11 @@
 import io
-import math
 from pathlib import Path
 
 import pytest
 from asserts import assert_equal
+
 from bbdl import BbdlOptions, Request, Result
 from date import Date
-
 from libb.dir import make_tmpdir
 
 
@@ -26,15 +25,47 @@ class TestResultUnwrapSingleElementLists:
         assert result.data[0]['name'] == 'IBM'
         assert result.data[1]['px_last'] == 101.0
 
-    def test_preserves_multi_element_lists(self):
-        """Multi-element lists should not be unwrapped"""
+    def test_preserves_multi_element_lists_for_bulk_fields(self):
+        """Multi-element lists should be preserved for bulk field types"""
         result = Result()
+        # CALL_SCHEDULE is a bulk field type - should remain as list
         result.data = [
-            {'prices': [100.5, 101.0, 102.0], 'single': [42]},
+            {'CALL_SCHEDULE': [(Date(2025, 1, 1), 100.0), (Date(2026, 1, 1), 100.0)], 'single': [42]},
         ]
         result.unwrap_single_element_lists()
-        assert result.data[0]['prices'] == [100.5, 101.0, 102.0]
+        assert len(result.data[0]['CALL_SCHEDULE']) == 2
         assert result.data[0]['single'] == 42
+
+    def test_unwraps_multi_element_lists_for_scalar_fields(self):
+        """Multi-element lists for scalar fields should take first non-null value"""
+        result = Result()
+        # COUNTRY_ISO is a scalar (Character) field - multi-element list should take first non-null
+        result.data = [
+            {'COUNTRY_ISO': [None, 'US', 'GB'], 'PX_LAST': [100.5]},
+        ]
+        result.unwrap_single_element_lists()
+        assert result.data[0]['COUNTRY_ISO'] == 'US'
+        assert result.data[0]['PX_LAST'] == 100.5
+
+    def test_unwraps_all_null_list_to_none(self):
+        """Multi-element list of all nulls should become None"""
+        result = Result()
+        result.data = [
+            {'COUNTRY_ISO': [None, None, None], 'PX_LAST': [100.5]},
+        ]
+        result.unwrap_single_element_lists()
+        assert result.data[0]['COUNTRY_ISO'] is None
+        assert result.data[0]['PX_LAST'] == 100.5
+
+    def test_unwraps_empty_list_to_none(self):
+        """Empty list should become None"""
+        result = Result()
+        result.data = [
+            {'COUNTRY_ISO': [], 'PX_LAST': [100.5]},
+        ]
+        result.unwrap_single_element_lists()
+        assert result.data[0]['COUNTRY_ISO'] is None
+        assert result.data[0]['PX_LAST'] == 100.5
 
     def test_preserves_scalars(self):
         """Scalar values should remain unchanged"""
