@@ -1,6 +1,7 @@
 import csv
 import datetime
 import logging
+import math
 import re
 
 from bbdl.assets import get_fields
@@ -51,7 +52,7 @@ def to_time(x, fmt=None) -> Time | None:
 class Field:
 
     @staticmethod
-    def to_type(field):
+    def to_type(field: str) -> type:
         """Field type lookup (for converting to container object)"""
         try:
             ftype = Field.all_fields[field.upper()]['Field Type']
@@ -73,7 +74,7 @@ class Field:
         raise ValueError(f'Unknown type: {ftype}, for mnemonic: {field}')
 
     @staticmethod
-    def to_python(field, value):
+    def to_python(field: str, value: str):
         """Convert field (including compound type) to python value
 
         >>> Field.to_python('PX_LAST', '123')
@@ -125,7 +126,7 @@ class Field:
         return fields
 
     @staticmethod
-    def limit_fields_to_categories(reqfields, categories):
+    def limit_fields_to_categories(reqfields: list[str], categories: list[str]) -> list[str]:
         """Filter fields to avoid expensive mistakes
         """
         allfields = Field.from_categories(categories) | Field.open_fields
@@ -265,31 +266,37 @@ class Field:
             all_categories['User Entered Info.'])
 
     @staticmethod
-    def _to_number(value):
+    def _to_number(value) -> float | int | None:
         if _is_null(value):
             return None
         try:
-            return parse_number(str(value))
+            result = parse_number(str(value))
+            if isinstance(result, float) and (math.isnan(result) or math.isinf(result)):
+                return None
+            return result
         except Exception:
             try:
-                return float(value)
+                result = float(value)
+                if math.isnan(result) or math.isinf(result):
+                    return None
+                return result
             except Exception as e:
                 logging.warning(f'Failed to parse number: {value!r} - {e}')
                 return None
 
     @staticmethod
-    def _to_str(value):
+    def _to_str(value) -> str | None:
         if _is_null(value):
             return None
         return value.strip()
 
     @staticmethod
-    def _to_bool(value):
+    def _to_bool(value) -> bool:
         value = Field._to_str(value)
         return bool(value and value.upper()[0] in {'1', 'T', 'Y'})
 
     @staticmethod
-    def _to_list(s):
+    def _to_list(s) -> list | None:
         """Parse a bulk field to a list of values. Values could be scalars
         if the bulk field has one dimension, or tuples, if it has two
         dimensions. More than two dimensions are not supported.
@@ -370,19 +377,19 @@ YELLOW_KEYS = ('Comdty', 'Equity', 'Muni', 'Pfd', 'M-Mkt',
 class Ticker:
 
     @staticmethod
-    def fix_case(ticker):
+    def fix_case(ticker: str | None) -> str | None:
         """Fix case of BB ticker to <upper> <upper> ... <capitalized>
         so '01234abc89 Us EQUITY' goes to '01234ABC89 US Equity'
         """
         if not ticker:
-            return
+            return None
         if ' ' not in ticker:
             return ticker.upper()
         bits = ticker.split(' ')
         return ' '.join([_.upper() for _ in bits[:-1]] + [bits[-1].capitalize()])
 
     @staticmethod
-    def is_bb_ticker(ticker):
+    def is_bb_ticker(ticker: str | None) -> bool:
         """Determine if ticker is a valid Bloomberg ticker. Not perfect.
         Must be of form <ticker> [extra] <type>.
         """
@@ -391,7 +398,7 @@ class Ticker:
         bits = ticker.split(' ')
         if len(bits) < 2:
             return False
-        return not bits[-1] not in YELLOW_KEYS
+        return bits[-1] in YELLOW_KEYS
 
 
 if __name__ == '__main__':
