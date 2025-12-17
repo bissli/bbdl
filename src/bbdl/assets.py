@@ -1,6 +1,12 @@
 import io
+from pathlib import Path
 
-__all__ = ['get_fields']
+__all__ = ['get_fields', 'get_assets_path']
+
+
+def get_assets_path(filename: str) -> Path:
+    """Return the path to an asset file in the bbdl package."""
+    return Path(__file__).parent / filename
 
 
 def get_fields():
