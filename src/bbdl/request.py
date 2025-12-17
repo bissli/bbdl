@@ -140,6 +140,7 @@ class Result:
         import numpy as np
         import pandas as pd
 
+        self.unwrap_single_element_lists()
         df = pd.DataFrame.from_records(self.data, columns=dict(self.columns))
         # Replace pandas NaN with None for database compatibility
         df = df.replace({np.nan: None})
