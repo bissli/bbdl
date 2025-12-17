@@ -120,12 +120,35 @@ class Result:
         Historical parsing wraps values in lists for time series. When combining
         historical and non-historical files, this normalizes to scalar values.
         Also converts NaN/Inf to None for JSON compatibility.
+
+        For multi-element lists in scalar fields (like country codes), takes
+        the first non-null value.
         """
+        from bbdl.parser import Field, _is_null
+
         for row in self.data:
             for key in row:
                 val = row[key]
-                if isinstance(val, list) and len(val) == 1:
-                    val = val[0]
+                if isinstance(val, list):
+                    # Check if this field should be a scalar type
+                    try:
+                        ftype = Field.to_type(key)
+                    except (ValueError, KeyError):
+                        ftype = object
+                    # For scalar types (not list), unwrap
+                    if ftype is not list:
+                        if len(val) == 1:
+                            val = val[0]
+                        elif len(val) > 1:
+                            # Take first non-null value for scalar fields
+                            for v in val:
+                                if not _is_null(v):
+                                    val = v
+                                    break
+                            else:
+                                val = None
+                        else:
+                            val = None
                 if isinstance(val, float) and (math.isnan(val) or math.isinf(val)):
                     val = None
                 row[key] = val
