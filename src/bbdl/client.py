@@ -3,6 +3,7 @@ from __future__ import annotations
 import contextlib
 import copy
 import functools
+import gzip
 import logging
 from pathlib import Path
 from types import TracebackType
@@ -43,7 +44,9 @@ def parse_dates(*date_params: str) -> Callable:
 
 def _parse_rundate(filepath: Path) -> Date | None:
     """Extract RUNDATE from Bloomberg response file header."""
-    with Path(filepath).open() as f:
+    filepath = Path(filepath)
+    open_fn = gzip.open if '.gz' in filepath.name else open
+    with open_fn(filepath, 'rt') as f:
         for line in f:
             if line.startswith('RUNDATE='):
                 return Date.parse(line.split('=')[1].strip())
@@ -172,6 +175,9 @@ class SFTPClient:
 
         if not matched_files:
             raise FileNotFoundError(f'No file found for date {target_date}')
+
+        # Normalize data: historical files wrap values in lists, non-historical don't
+        result.unwrap_single_element_lists()
 
         logger.info(f'Found {len(matched_files)} files for date {target_date}: {matched_files}')
         return result
