@@ -2,10 +2,12 @@ import contextlib
 import gzip
 import io
 import logging
+import math
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from bbdl.exceptions import BbdlParseError, BbdlTimeoutError
 from bbdl.options import BbdlOptions
 from bbdl.parser import Field
 from libb import attrdict, unique
@@ -112,13 +114,44 @@ class Result:
         if other.columns:
             self.columns.extend(other.columns)
 
+    def unwrap_single_element_lists(self):
+        """Unwrap single-element lists to scalar values and sanitize NaN/Inf.
+
+        Historical parsing wraps values in lists for time series. When combining
+        historical and non-historical files, this normalizes to scalar values.
+        Also converts NaN/Inf to None for JSON compatibility.
+        """
+        for row in self.data:
+            for key in row:
+                val = row[key]
+                if isinstance(val, list) and len(val) == 1:
+                    val = val[0]
+                if isinstance(val, float) and (math.isnan(val) or math.isinf(val)):
+                    val = None
+                row[key] = val
+
+    def to_dataframe(self):
+        """Convert result data to a pandas DataFrame with NaN replaced by None.
+
+        Pandas converts None to nan for numeric columns during DataFrame creation.
+        This method creates the DataFrame and then replaces nan with None to ensure
+        database compatibility.
+        """
+        import numpy as np
+        import pandas as pd
+
+        df = pd.DataFrame.from_records(self.data, columns=dict(self.columns))
+        # Replace pandas NaN with None for database compatibility
+        df = df.replace({np.nan: None})
+        return df
+
 
 class Request:
     """Generic utility for processing SFTP Request.
     """
 
     @staticmethod
-    def build(identifiers: list, fields: list, reqfile: Path, options: BbdlOptions):
+    def build(identifiers: list, fields: list, reqfile: Path, options: BbdlOptions) -> Path:
         """Build request.
 
         See tests for details.
@@ -197,7 +230,7 @@ class Request:
         return reqfile
 
     @staticmethod
-    def send(ftpcn, reqfile: Path, respfile: Path, options: BbdlOptions):
+    def send(ftpcn, reqfile: Path, respfile: Path, options: BbdlOptions) -> None:
         reqname = reqfile.name
         respname = respfile.name
         # Bloomberg always compresses gethistory responses regardless of COMPRESS setting
@@ -213,7 +246,7 @@ class Request:
         for i in range(options.wait_time*6):
             logger.debug('Waiting for output file...')
             time.sleep(10)
-            files = ftpcn.files()
+            files = ftpcn.files() or []
             found = [f for f in files if f.endswith(respname)]
             if found:
                 logger.debug('Retrieving output file...')
@@ -222,7 +255,7 @@ class Request:
                     _unzip(respfile)
                 break
         else:
-            raise Exception(f'Timeout waiting for reply file: {respname}')
+            raise BbdlTimeoutError(f'Timeout waiting for reply file: {respname}')
 
     @staticmethod
     def parse(respfile: Path) -> Result:
@@ -236,7 +269,9 @@ class Request:
         columns := List[(str, type)]
 
         """
-        with Path(respfile).open('r') as f:
+        respfile = Path(respfile)
+        open_fn = gzip.open if '.gz' in respfile.name else open
+        with open_fn(respfile, 'rt') as f:
             return _parse(f)
 
 
@@ -263,11 +298,13 @@ def _parse(f: io.TextIOBase):
         if line == HISTORY_PROGRAM:
             is_history = True
         if line == 'START-OF-FIELDS':
-            assert not infields
+            if infields:
+                raise BbdlParseError('Unexpected START-OF-FIELDS: already parsing fields')
             infields = True
             continue
         if line == 'END-OF-FIELDS':
-            assert infields
+            if not infields:
+                raise BbdlParseError('Unexpected END-OF-FIELDS: not parsing fields')
             break
         if not infields:
             continue
@@ -277,11 +314,13 @@ def _parse(f: io.TextIOBase):
     while True:
         line = f.readline().strip()
         if line == 'START-OF-DATA':
-            assert not indata
+            if indata:
+                raise BbdlParseError('Unexpected START-OF-DATA: already parsing data')
             indata = True
             continue
         if line == 'END-OF-DATA':
-            assert indata
+            if not indata:
+                raise BbdlParseError('Unexpected END-OF-DATA: not parsing data')
             break
         if not indata:
             continue
