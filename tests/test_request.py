@@ -1,3 +1,5 @@
+"""Unit tests for bbdl.request module."""
+
 import io
 from pathlib import Path
 
@@ -5,8 +7,16 @@ import pytest
 from asserts import assert_equal
 
 from bbdl import BbdlOptions, Request, Result
+from bbdl.request import _parse
 from date import Date
 from libb.dir import make_tmpdir
+
+FIXTURES_DIR = Path(__file__).parent / 'fixtures' / 'samples'
+
+
+def _find(data, identifier_part):
+    """Find a record by partial identifier match."""
+    return next(r for r in data if identifier_part in r['IDENTIFIER'])
 
 
 class TestResultUnwrapSingleElementLists:
@@ -28,7 +38,6 @@ class TestResultUnwrapSingleElementLists:
     def test_preserves_multi_element_lists_for_bulk_fields(self):
         """Multi-element lists should be preserved for bulk field types"""
         result = Result()
-        # CALL_SCHEDULE is a bulk field type - should remain as list
         result.data = [
             {'CALL_SCHEDULE': [(Date(2025, 1, 1), 100.0), (Date(2026, 1, 1), 100.0)], 'single': [42]},
         ]
@@ -39,7 +48,6 @@ class TestResultUnwrapSingleElementLists:
     def test_unwraps_multi_element_lists_for_scalar_fields(self):
         """Multi-element lists for scalar fields should take first non-null value"""
         result = Result()
-        # COUNTRY_ISO is a scalar (Character) field - multi-element list should take first non-null
         result.data = [
             {'COUNTRY_ISO': [None, 'US', 'GB'], 'PX_LAST': [100.5]},
         ]
@@ -142,7 +150,6 @@ class TestResultToDataframe:
         ]
         result.columns = [('ticker', str), ('px_last', float), ('volume', int)]
         df = result.to_dataframe()
-        # Values should be scalars, not lists
         assert df.iloc[0]['ticker'] == 'IBM'
         assert df.iloc[0]['px_last'] == 100.5
         assert df.iloc[0]['volume'] == 1000
@@ -179,13 +186,11 @@ AAPL US Equity|0|2|BBG000B9XRY4|175.25|
 END-OF-DATA
 END-OF-FILE
 """
-        from bbdl.request import _parse
         result = _parse(io.StringIO(response))
         assert len(result.data) == 2
         assert result.data[0]['IDENTIFIER'] == 'IBM US Equity'
         assert result.data[0]['ID_BB_GLOBAL'] == 'BBG000BLNNH6'
         assert result.data[0]['PX_LAST'] == 145.50
-        # Non-historical: values should be scalars, not lists
         assert not isinstance(result.data[0]['PX_LAST'], list)
 
     def test_parse_historical_response_single_date(self):
@@ -201,10 +206,8 @@ IBM US Equity|0|1|20251215|145.50|
 END-OF-DATA
 END-OF-FILE
 """
-        from bbdl.request import _parse
         result = _parse(io.StringIO(response))
         assert len(result.data) == 1
-        # Historical: values are wrapped in lists
         assert result.data[0]['PX_LAST'] == [145.50]
         assert result.data[0]['DATE'] == [Date(2025, 12, 15)]
 
@@ -223,9 +226,7 @@ IBM US Equity|0|1|20251217|147.25|
 END-OF-DATA
 END-OF-FILE
 """
-        from bbdl.request import _parse
         result = _parse(io.StringIO(response))
-        # Should aggregate to single row per identifier
         assert len(result.data) == 1
         assert result.data[0]['IDENTIFIER'] == 'IBM US Equity'
         assert result.data[0]['PX_LAST'] == [145.50, 146.00, 147.25]
@@ -246,14 +247,11 @@ AAPL US Equity|0|2|20251215|175.25|175.00|
 END-OF-DATA
 END-OF-FILE
 """
-        from bbdl.request import _parse
         result = _parse(io.StringIO(response))
         df = result.to_dataframe()
-        # After to_dataframe, single-element lists should be unwrapped
         assert df.iloc[0]['PX_LAST'] == 145.50
         assert df.iloc[0]['PX_BID'] == 145.25
         assert df.iloc[1]['PX_LAST'] == 175.25
-        # Verify they're not lists
         assert not isinstance(df.iloc[0]['PX_LAST'], list)
 
     def test_parse_error_response(self):
@@ -269,24 +267,27 @@ INVALID|10|0|
 END-OF-DATA
 END-OF-FILE
 """
-        from bbdl.request import _parse
         result = _parse(io.StringIO(response))
         assert len(result.data) == 0
         assert len(result.errors) == 1
         assert result.errors[0]['RETCODE'] == '10'
 
 
-def test_basic_request():
-    identifiers = ['IBM US Equity', '88160RAG6 Corp']
-    fields = ['ID_BB_GLOBAL', 'PARSEKYABLE_DES', 'PX_LAST']
+class TestRequestBuild:
+    """Tests for Request.build()"""
 
-    with make_tmpdir() as tmpdir:
-        reqfile = Path(tmpdir) / 'reqfile.out'
-        options = BbdlOptions(programflag='adhoc')
-        Request.build(identifiers, fields, reqfile, options)
-        with Path(reqfile).open('r') as f:
-            resp = f.read()
-        expected = """\
+    def test_basic_request(self):
+        """Should build a valid request file"""
+        identifiers = ['IBM US Equity', '88160RAG6 Corp']
+        fields = ['ID_BB_GLOBAL', 'PARSEKYABLE_DES', 'PX_LAST']
+
+        with make_tmpdir() as tmpdir:
+            reqfile = Path(tmpdir) / 'reqfile.out'
+            options = BbdlOptions(programflag='adhoc')
+            Request.build(identifiers, fields, reqfile, options)
+            with reqfile.open('r') as f:
+                resp = f.read()
+            expected = """\
 START-OF-FILE
 FIRMNAME=None
 PROGRAMFLAG=adhoc
@@ -310,7 +311,147 @@ END-OF-DATA
 
 END-OF-FILE
 """
-        assert_equal(resp, expected)
+            assert_equal(resp, expected)
+
+
+class TestComprehensiveFixtures:
+    """Tests using comprehensive fixture files with real Bloomberg data patterns."""
+
+    @pytest.fixture(scope='class')
+    def bonds_result(self):
+        with (FIXTURES_DIR / 'comprehensive' / 'response_bonds.out').open() as f:
+            return _parse(f)
+
+    @pytest.fixture(scope='class')
+    def converts_result(self):
+        with (FIXTURES_DIR / 'comprehensive' / 'response_converts.out').open() as f:
+            return _parse(f)
+
+    @pytest.fixture(scope='class')
+    def equity_result(self):
+        with (FIXTURES_DIR / 'comprehensive' / 'response_equity.out').open() as f:
+            return _parse(f)
+
+    def test_bonds_parsing(self, bonds_result):
+        """Test parsing bonds response with various bond types and error codes."""
+        # Should have 3 valid securities (GT3 Govt, SNAP Corp, SAVE TL)
+        assert len(bonds_result.data) == 3
+
+        # Check government bond
+        gt3 = _find(bonds_result.data, 'GT3')
+        assert gt3['CPN'] == 3.5
+        assert gt3['CPN_FREQ'] == 2
+        assert gt3['DAY_CNT_DES'] == 'ACT/ACT'
+        assert gt3['DEFAULTED'] is False
+
+        # Check corporate bond with call schedule
+        snap = _find(bonds_result.data, 'SNAP')
+        assert snap['CPN'] == 6.875
+        assert snap['INDUSTRY_SECTOR'] == 'Communications'
+        assert snap['CALL_SCHEDULE'] is not None
+        assert isinstance(snap['CALL_SCHEDULE'], list)
+        assert len(snap['CALL_SCHEDULE']) > 0
+
+        # Check errors (code 10 = invalid, code 11 = restricted)
+        assert len(bonds_result.errors) == 2
+        error_codes = {e['RETCODE'] for e in bonds_result.errors}
+        assert '10' in error_codes
+        assert '11' in error_codes
+
+    def test_converts_parsing(self, converts_result):
+        """Test parsing convertible bonds with bulk fields."""
+        # Should have 4 valid convertibles, 2 errors
+        assert len(converts_result.data) == 4
+        assert len(converts_result.errors) == 2
+
+        # Check US convertible with soft call schedule (ARRY bond)
+        arry = next(r for r in converts_result.data if r['IDENTIFIER'] == 'BBG01VRLWHP4')
+        assert arry['CPN'] == 2.875
+        assert arry['CV_CNVS_RATIO'] == 123.1262
+        assert arry['INITIAL_CONVERSION_PREMIUM'] == 27.5
+        assert arry['SOFT_CALL_SCHEDULE'] is not None
+        assert isinstance(arry['SOFT_CALL_SCHEDULE'], list)
+        assert arry['SOFT_CALL_TRIGGER'] == 130.0
+
+        # Check European convertible (FR)
+        su = next(r for r in converts_result.data if r['IDENTIFIER'] == 'BBG01K887NJ0')
+        assert su['COUNTRY_ISO'] == 'FR'
+        assert su['CPN'] == 1.97
+
+        # Check zero coupon convert (BOX)
+        box = next(r for r in converts_result.data if r['IDENTIFIER'] == 'BBG00YVG4RF5')
+        assert box['CPN'] == 0
+
+        # Check Japanese convert with put schedule
+        kacapi = next(r for r in converts_result.data if r['IDENTIFIER'] == 'BBG01QD4Q4C8')
+        assert kacapi['COUNTRY_ISO'] == 'JP'
+        assert kacapi['PUT_SCHEDULE'] is not None
+        assert kacapi['SOFT_CALL_DAYS'] is None  # N.A. in source
+
+    def test_equity_parsing(self, equity_result):
+        """Test parsing equity response with multiple countries and null handling."""
+        # Should have 4 valid equities, 1 error
+        assert len(equity_result.data) == 4
+        assert len(equity_result.errors) == 1
+
+        # Check US equity
+        aapl = _find(equity_result.data, 'AAPL')
+        assert aapl['COUNTRY_ISO'] == 'US'
+        assert aapl['GICS_SECTOR'] == 45
+        assert aapl['GICS_SECTOR_NAME'] == 'Information Technology'
+        assert isinstance(aapl['EQY_BETA'], float)
+        assert isinstance(aapl['CUR_MKT_CAP'], float)
+
+        # Check Japanese equity with N.A. values
+        ibiden = _find(equity_result.data, '4062')
+        assert ibiden['COUNTRY_ISO'] == 'JP'
+        assert ibiden['DVD_FREQ'] == 'Semi-Anl'
+        assert ibiden['LOW_52WEEK'] is None
+        assert ibiden['LOW_DT_52WEEK'] is None
+
+        # Check Taiwan equity with N.A. values
+        gigabyte = _find(equity_result.data, '2376')
+        assert gigabyte['COUNTRY_ISO'] == 'TW'
+        assert gigabyte['DVD_SH_LAST'] is None
+
+    def test_bulk_field_call_schedule(self, bonds_result):
+        """Test detailed parsing of CALL_SCHEDULE bulk field."""
+        snap = _find(bonds_result.data, 'SNAP')
+        call_schedule = snap['CALL_SCHEDULE']
+
+        # Should be list of (date, price) tuples
+        assert len(call_schedule) >= 3
+        for item in call_schedule:
+            assert isinstance(item, tuple)
+            assert len(item) == 2
+            date_val, price_val = item
+            assert isinstance(date_val, Date)
+            assert isinstance(price_val, (int, float))
+
+    def test_bulk_field_soft_call_schedule(self, converts_result):
+        """Test detailed parsing of SOFT_CALL_SCHEDULE bulk field."""
+        arry = next(r for r in converts_result.data if r['IDENTIFIER'] == 'BBG01VRLWHP4')
+        soft_call = arry['SOFT_CALL_SCHEDULE']
+
+        assert soft_call is not None
+        assert isinstance(soft_call, list)
+        assert len(soft_call) >= 1
+
+    def test_to_dataframe(self, equity_result):
+        """Test converting comprehensive fixture results to DataFrame."""
+        df = equity_result.to_dataframe()
+
+        assert len(df) == 4
+        assert 'IDENTIFIER' in df.columns
+        assert 'PX_LAST' in df.columns
+        assert 'COUNTRY_ISO' in df.columns
+
+        # Check values are scalars, not lists
+        for col in ['PX_LAST', 'PX_BID', 'PX_ASK']:
+            if col in df.columns:
+                for val in df[col]:
+                    if val is not None:
+                        assert not isinstance(val, list)
 
 
 if __name__ == '__main__':
