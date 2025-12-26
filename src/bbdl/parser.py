@@ -5,6 +5,7 @@ import math
 import re
 
 from bbdl.assets import get_fields
+from bbdl.mappings import BULK_FIELD_KEYS
 from date import Date, DateTime, Time
 from libb import OrderedSet, attrdict, cachedstaticproperty, parse_number
 
@@ -56,6 +57,16 @@ def to_time(x, fmt=None) -> Time | None:
     return Time.parse(x, fmt=fmt, raise_err=True)
 
 
+def _bulk_to_dicts(field: str, value: str) -> list[dict] | None:
+    """Convert bulk field to list of dicts with named keys.
+    """
+    items = Field._to_list(value)
+    if not items:
+        return None
+    keys = BULK_FIELD_KEYS[field.upper()]
+    return [dict(zip(keys, item if isinstance(item, tuple) else (item,))) for item in items]
+
+
 class Field:
 
     @staticmethod
@@ -81,26 +92,25 @@ class Field:
         raise ValueError(f'Unknown type: {ftype}, for mnemonic: {field}')
 
     @staticmethod
-    def to_python(field: str, value: str):
-        """Convert field (including compound type) to python value
+    def to_python(field: str, value: str, use_custom_mappings: bool = True):
+        """Convert field (including compound type) to python value.
+
+        Args:
+            field: Bloomberg field name
+            value: Raw string value from response
+            use_custom_mappings: If True, use custom bulk field formatters
+                that return list[dict] with named keys. If False, return
+                raw list[tuple] format.
 
         >>> Field.to_python('PX_LAST', '123')
         123
         >>> Field.to_python('MATURITY', '12/1/24')
         Date(2024, 12, 1)
-
-        One dimension List
-        >>> l = ';1;2;5;11/01/2007;5;11/01/2008;'
-        >>> Field.to_python('DDIS_AMT_OUTSTANDING_BY_YR_BNDLN', l)
-        [Date(2007, 11, 1), Date(2008, 11, 1)]
-
-        Two dimension List
-        >>> l = ';2;2;2;5;11/01/2007;3;100.5;5;11/01/2008;3;101;'
-        >>> Field.to_python('DDIS_AMT_OUTSTANDING_BY_YR_BNDLN', l)
-        [(Date(2007, 11, 1), 100.5), (Date(2008, 11, 1), 101)]
         """
-        if field in Field._exception_convertrs:
-            return Field._exception_convertrs[field](value)
+        if field in Field._base_convertrs:
+            return Field._base_convertrs[field](value)
+        if use_custom_mappings and field in BULK_FIELD_KEYS:
+            return _bulk_to_dicts(field, value)
         try:
             ftype = Field.all_fields[field.upper()]['Field Type']
         except KeyError:
@@ -366,7 +376,7 @@ class Field:
         raise ValueError(f'Unexpected field type: {ftype}, value: {s}')
 
     @cachedstaticproperty
-    def _exception_convertrs():
+    def _base_convertrs():
         return {
             'IDENTIFIER': Field._to_str,
             'RETCODE': Field._to_number,
@@ -375,7 +385,7 @@ class Field:
             'CNTRY_OF_DOMICILE': Field._to_country_code,
             'COUNTRY_ISO': Field._to_country_code,
             'CPN': Field._to_number,
-        }
+            }
 
     @staticmethod
     def _to_country_code(value) -> str | None:
