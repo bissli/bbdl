@@ -275,5 +275,82 @@ class TestTickerIsBbTicker:
             assert Ticker.is_bb_ticker(f'TEST {key}') is True
 
 
+class TestBulkFieldFormatting:
+    """Test bulk field formatting with named keys."""
+
+    def test_soft_call_schedule(self):
+        """Verify soft_call_schedule returns dicts with named keys."""
+        s = ';2;2;2;5;01/01/2025;3;100.5;5;02/01/2025;3;101.0;'
+        result = Field.to_python('SOFT_CALL_SCHEDULE', s)
+        assert isinstance(result, list)
+        assert len(result) == 2
+        assert isinstance(result[0], dict)
+        assert 'Soft Call Date' in result[0]
+        assert 'Soft Call Price' in result[0]
+        assert result[0]['Soft Call Date'] == Date(2025, 1, 1)
+        assert result[0]['Soft Call Price'] == 100.5
+
+    def test_call_schedule(self):
+        """Verify call_schedule returns dicts with Call Date and Call Price."""
+        s = ';2;2;2;5;03/15/2026;3;102.5;5;03/15/2027;3;101.0;'
+        result = Field.to_python('CALL_SCHEDULE', s)
+        assert isinstance(result, list)
+        assert len(result) == 2
+        assert 'Call Date' in result[0]
+        assert 'Call Price' in result[0]
+        assert result[0]['Call Date'] == Date(2026, 3, 15)
+        assert result[0]['Call Price'] == 102.5
+
+    def test_put_schedule(self):
+        """Verify put_schedule returns dicts with Put Date and Put Price."""
+        s = ';2;1;2;5;06/01/2027;3;100.0;'
+        result = Field.to_python('PUT_SCHEDULE', s)
+        assert isinstance(result, list)
+        assert len(result) == 1
+        assert 'Put Date' in result[0]
+        assert 'Put Price' in result[0]
+
+    def test_conversion_reset_schedule(self):
+        """Verify conversion_reset_schedule returns dicts with named keys."""
+        s = ';2;2;3;5;01/06/2022;3;80.0;3;0.0;5;01/16/2023;3;77.5;3;0.0;'
+        result = Field.to_python('CONVERSION_RESET_SCHEDULE', s)
+        assert isinstance(result, list)
+        assert len(result) == 2
+        assert 'Reset Date' in result[0]
+        assert 'Conversion Price' in result[0]
+        assert 'Floor' in result[0]
+        assert result[0]['Reset Date'] == Date(2022, 1, 6)
+        assert result[0]['Conversion Price'] == 80.0
+        assert result[0]['Floor'] == 0.0
+
+    def test_redemption_underlying(self):
+        """Verify redemption_underlying returns dicts with Ticker and Type."""
+        s = ';2;1;2;1;MSFT US;1;Equity;'
+        result = Field.to_python('REDEMPTION_UNDERLYING', s)
+        assert isinstance(result, list)
+        assert len(result) == 1
+        assert 'Ticker' in result[0]
+        assert 'Type' in result[0]
+        assert result[0]['Ticker'] == 'MSFT US'
+        assert result[0]['Type'] == 'Equity'
+
+    def test_null_bulk_field(self):
+        """Verify null bulk field returns None."""
+        result = Field.to_python('SOFT_CALL_SCHEDULE', '')
+        assert result is None
+
+    def test_issue_underwriter(self):
+        """Verify issue_underwriter returns dicts with all 8 fields."""
+        s = ';2;1;8;1;Bookrunner;1;BofA Securities;1;BofA;1;JLMB;1;Joint Lead;3;0.0;2;1;5;06/17/2024;'
+        result = Field.to_python('ISSUE_UNDERWRITER', s)
+        assert isinstance(result, list)
+        assert len(result) == 1
+        assert 'Role' in result[0]
+        assert 'Firm' in result[0]
+        assert 'Abbreviation' in result[0]
+        assert result[0]['Role'] == 'Bookrunner'
+        assert result[0]['Firm'] == 'BofA Securities'
+
+
 if __name__ == '__main__':
     pytest.main([__file__, '-v'])

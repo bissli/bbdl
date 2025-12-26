@@ -415,27 +415,31 @@ class TestComprehensiveFixtures:
         assert gigabyte['DVD_SH_LAST'] is None
 
     def test_bulk_field_call_schedule(self, bonds_result):
-        """Test detailed parsing of CALL_SCHEDULE bulk field."""
+        """Test detailed parsing of CALL_SCHEDULE bulk field with custom mappings."""
         snap = _find(bonds_result.data, 'SNAP')
         call_schedule = snap['CALL_SCHEDULE']
 
-        # Should be list of (date, price) tuples
+        # With use_custom_mappings=True (default), should be list of dicts
         assert len(call_schedule) >= 3
         for item in call_schedule:
-            assert isinstance(item, tuple)
-            assert len(item) == 2
-            date_val, price_val = item
-            assert isinstance(date_val, Date)
-            assert isinstance(price_val, (int, float))
+            assert isinstance(item, dict)
+            assert 'Call Date' in item
+            assert 'Call Price' in item
+            assert isinstance(item['Call Date'], Date)
+            assert isinstance(item['Call Price'], (int, float))
 
     def test_bulk_field_soft_call_schedule(self, converts_result):
-        """Test detailed parsing of SOFT_CALL_SCHEDULE bulk field."""
+        """Test detailed parsing of SOFT_CALL_SCHEDULE bulk field with custom mappings."""
         arry = next(r for r in converts_result.data if r['IDENTIFIER'] == 'BBG01VRLWHP4')
         soft_call = arry['SOFT_CALL_SCHEDULE']
 
+        # With use_custom_mappings=True (default), should be list of dicts
         assert soft_call is not None
         assert isinstance(soft_call, list)
         assert len(soft_call) >= 1
+        assert isinstance(soft_call[0], dict)
+        assert 'Soft Call Date' in soft_call[0]
+        assert 'Soft Call Price' in soft_call[0]
 
     def test_to_dataframe(self, equity_result):
         """Test converting comprehensive fixture results to DataFrame."""
@@ -452,6 +456,123 @@ class TestComprehensiveFixtures:
                 for val in df[col]:
                     if val is not None:
                         assert not isinstance(val, list)
+
+
+class TestCustomMappingsOption:
+    """Tests for use_custom_mappings option controlling bulk field formatting."""
+
+    def test_custom_mappings_enabled_returns_dicts(self):
+        """With use_custom_mappings=True, bulk fields return list[dict]."""
+        response = """\
+START-OF-FILE
+PROGRAMNAME=getdata
+START-OF-FIELDS
+SOFT_CALL_SCHEDULE
+END-OF-FIELDS
+START-OF-DATA
+TEST|0|1|;2;1;2;5;20310401;3;100.00000;|
+END-OF-DATA
+END-OF-FILE
+"""
+        result = _parse(io.StringIO(response), use_custom_mappings=True)
+        soft_call = result.data[0]['SOFT_CALL_SCHEDULE']
+        assert isinstance(soft_call, list)
+        assert isinstance(soft_call[0], dict)
+        assert 'Soft Call Date' in soft_call[0]
+        assert 'Soft Call Price' in soft_call[0]
+        assert soft_call[0]['Soft Call Date'] == Date(2031, 4, 1)
+        assert soft_call[0]['Soft Call Price'] == 100.0
+
+    def test_custom_mappings_disabled_returns_tuples(self):
+        """With use_custom_mappings=False, bulk fields return list[tuple]."""
+        response = """\
+START-OF-FILE
+PROGRAMNAME=getdata
+START-OF-FIELDS
+SOFT_CALL_SCHEDULE
+END-OF-FIELDS
+START-OF-DATA
+TEST|0|1|;2;1;2;5;20310401;3;100.00000;|
+END-OF-DATA
+END-OF-FILE
+"""
+        result = _parse(io.StringIO(response), use_custom_mappings=False)
+        soft_call = result.data[0]['SOFT_CALL_SCHEDULE']
+        assert isinstance(soft_call, list)
+        assert isinstance(soft_call[0], tuple)
+        assert soft_call[0] == (Date(2031, 4, 1), 100.0)
+
+    def test_custom_mappings_call_schedule(self):
+        """Test CALL_SCHEDULE with both custom mappings modes."""
+        response = """\
+START-OF-FILE
+PROGRAMNAME=getdata
+START-OF-FIELDS
+CALL_SCHEDULE
+END-OF-FIELDS
+START-OF-DATA
+TEST|0|1|;2;2;2;5;20260315;3;102.5;5;20270315;3;101.0;|
+END-OF-DATA
+END-OF-FILE
+"""
+        # With custom mappings enabled
+        result_enabled = _parse(io.StringIO(response), use_custom_mappings=True)
+        call_schedule = result_enabled.data[0]['CALL_SCHEDULE']
+        assert isinstance(call_schedule[0], dict)
+        assert call_schedule[0]['Call Date'] == Date(2026, 3, 15)
+        assert call_schedule[0]['Call Price'] == 102.5
+        assert call_schedule[1]['Call Date'] == Date(2027, 3, 15)
+        assert call_schedule[1]['Call Price'] == 101.0
+
+        # With custom mappings disabled
+        result_disabled = _parse(io.StringIO(response), use_custom_mappings=False)
+        call_schedule = result_disabled.data[0]['CALL_SCHEDULE']
+        assert isinstance(call_schedule[0], tuple)
+        assert call_schedule[0] == (Date(2026, 3, 15), 102.5)
+        assert call_schedule[1] == (Date(2027, 3, 15), 101.0)
+
+    def test_custom_mappings_put_schedule(self):
+        """Test PUT_SCHEDULE with custom mappings enabled."""
+        response = """\
+START-OF-FILE
+PROGRAMNAME=getdata
+START-OF-FIELDS
+PUT_SCHEDULE
+END-OF-FIELDS
+START-OF-DATA
+TEST|0|1|;2;1;2;5;20271105;3;100.00000;|
+END-OF-DATA
+END-OF-FILE
+"""
+        result = _parse(io.StringIO(response), use_custom_mappings=True)
+        put_schedule = result.data[0]['PUT_SCHEDULE']
+        assert isinstance(put_schedule[0], dict)
+        assert 'Put Date' in put_schedule[0]
+        assert 'Put Price' in put_schedule[0]
+        assert put_schedule[0]['Put Date'] == Date(2027, 11, 5)
+        assert put_schedule[0]['Put Price'] == 100.0
+
+    def test_non_bulk_fields_unaffected(self):
+        """Non-bulk fields should work the same regardless of custom mappings setting."""
+        response = """\
+START-OF-FILE
+PROGRAMNAME=getdata
+START-OF-FIELDS
+PX_LAST
+CPN
+END-OF-FIELDS
+START-OF-DATA
+TEST|0|2|145.50|2.875|
+END-OF-DATA
+END-OF-FILE
+"""
+        result_enabled = _parse(io.StringIO(response), use_custom_mappings=True)
+        result_disabled = _parse(io.StringIO(response), use_custom_mappings=False)
+
+        assert result_enabled.data[0]['PX_LAST'] == 145.50
+        assert result_disabled.data[0]['PX_LAST'] == 145.50
+        assert result_enabled.data[0]['CPN'] == 2.875
+        assert result_disabled.data[0]['CPN'] == 2.875
 
 
 if __name__ == '__main__':

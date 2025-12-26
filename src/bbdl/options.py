@@ -42,6 +42,7 @@ class BbdlOptions(ConfigOptions):
     port: int = 22
     tempdir: Path = None
     is_bba: bool = False  # linking to Bloomberg Anywhere (BBA) terminal
+    use_custom_mappings: bool = True  # use custom bulk field formatters
 
     def __post_init__(self):
         self.begdate = Date(self.begdate) if self.begdate else None

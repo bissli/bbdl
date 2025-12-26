@@ -282,10 +282,11 @@ class Request:
             raise BbdlTimeoutError(f'Timeout waiting for reply file: {respname}')
 
     @staticmethod
-    def parse(respfile: Path) -> Result:
+    def parse(respfile: Path, options: BbdlOptions | None = None) -> Result:
         """Parses respfile
 
         respfile: Saved from `send` step
+        options: BbdlOptions for parsing configuration
 
         Returns
         data := List[Dict]
@@ -295,8 +296,9 @@ class Request:
         """
         respfile = Path(respfile)
         open_fn = gzip.open if '.gz' in respfile.name else open
+        use_custom_mappings = options.use_custom_mappings if options else True
         with open_fn(respfile, 'rt') as f:
-            return _parse(f)
+            return _parse(f, use_custom_mappings=use_custom_mappings)
 
 
 def _unzip(zipfile: Path):
@@ -308,8 +310,8 @@ def _unzip(zipfile: Path):
     zipfile.unlink(missing_ok=True)
 
 
-def _parse(f: io.TextIOBase):
-    """Parses opened respfile
+def _parse(f: io.TextIOBase, use_custom_mappings: bool = True):
+    """Parses opened respfile.
     """
     res = Result()
 
@@ -358,7 +360,7 @@ def _parse(f: io.TextIOBase):
             row = attrdict(zip(status_fields + fields, flds))
             for fld, val in row.items():
                 try:
-                    row[fld] = Field.to_python(fld, val)
+                    row[fld] = Field.to_python(fld, val, use_custom_mappings=use_custom_mappings)
                 except Exception as exc:
                     logger.warning(f'Error converting fld={fld}, val={val}: {str(exc)}')
                     row[fld] = None

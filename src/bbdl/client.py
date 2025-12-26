@@ -148,7 +148,7 @@ class SFTPClient:
             respfile = options.tempdir / f'fprp{part:02d}.out'
             Request.build(sids, fields[i:i+500], reqfile, options)
             Request.send(self.cn, reqfile, respfile, options)
-            _result = Request.parse(respfile)
+            _result = Request.parse(respfile, options)
             result.extend(_result)
 
         # Normalize data: historical files wrap values in lists, non-historical don't
@@ -173,7 +173,7 @@ class SFTPClient:
             rundate = _parse_rundate(localpath)
             if rundate == target_date:
                 matched_files.append(filename)
-                _result = Request.parse(localpath)
+                _result = Request.parse(localpath, self.options)
                 result.extend(_result)
 
         if not matched_files:
