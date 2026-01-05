@@ -12,7 +12,7 @@ from bbdl.options import BbdlOptions
 from bbdl.parser import Field
 from libb import attrdict, unique
 
-__all__ = ['Request']
+__all__ = ['Request', 'Result']
 
 logger = logging.getLogger(__name__)
 
@@ -106,9 +106,27 @@ class Result:
     def columns(self, value):
         self._columns = value or []
 
-    def extend(self, other):
-        if other.data:
-            self.data.extend(other.data)
+    def merge(self, other: 'Result') -> None:
+        """Merge another Result by matching IDENTIFIER field.
+        """
+        if not other.data:
+            if other.errors:
+                self.errors.extend(other.errors)
+            if other.columns:
+                self.columns.extend(other.columns)
+            return
+
+        index = {row['IDENTIFIER']: row for row in self.data}
+        for source_row in other.data:
+            identifier = source_row['IDENTIFIER']
+            if identifier in index:
+                for key, value in source_row.items():
+                    if key not in index[identifier]:
+                        index[identifier][key] = value
+            else:
+                self.data.append(source_row)
+                index[identifier] = source_row
+
         if other.errors:
             self.errors.extend(other.errors)
         if other.columns:
@@ -310,6 +328,17 @@ def _unzip(zipfile: Path):
     zipfile.unlink(missing_ok=True)
 
 
+def _strip_history_override_suffix(field_name: str) -> str:
+    """Strip gethistory override suffix from field name.
+
+    Bloomberg returns field names with override suffix intact:
+    SALES_REV_TURN|1|AE|E| -> SALES_REV_TURN
+    """
+    if '|1|' in field_name:
+        return field_name.split('|', maxsplit=1)[0]
+    return field_name
+
+
 def _parse(f: io.TextIOBase, use_custom_mappings: bool = True):
     """Parses opened respfile.
     """
@@ -334,7 +363,7 @@ def _parse(f: io.TextIOBase, use_custom_mappings: bool = True):
             break
         if not infields:
             continue
-        fields.append(line)
+        fields.append(_strip_history_override_suffix(line))
 
     indata = False
     while True:
