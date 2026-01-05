@@ -90,7 +90,7 @@ class Result:
     """
     data: list[dict] = field(init=False)
     errors: list[dict] = field(init=False)
-    columns: list[(str, type)] = field(init=False)
+    _columns: list = field(init=False, repr=False)
 
     def __post_init__(self):
         self.data = []
@@ -98,13 +98,16 @@ class Result:
         self._columns = []
 
     @property
-    def columns(self):
-        self._columns = unique(self._columns)
+    def columns(self) -> list[tuple[str, type]]:
         return self._columns
 
     @columns.setter
-    def columns(self, value):
-        self._columns = value or []
+    def columns(self, value: list[tuple[str, type]] | None) -> None:
+        self._columns = unique(value) if value else []
+
+    def _add_columns(self, new_columns: list[tuple[str, type]]) -> None:
+        """Add columns and deduplicate."""
+        self._columns = unique(self._columns + list(new_columns))
 
     def merge(self, other: 'Result') -> None:
         """Merge another Result by matching IDENTIFIER field.
@@ -113,7 +116,7 @@ class Result:
             if other.errors:
                 self.errors.extend(other.errors)
             if other.columns:
-                self.columns.extend(other.columns)
+                self._add_columns(other.columns)
             return
 
         index = {row['IDENTIFIER']: row for row in self.data}
@@ -130,7 +133,7 @@ class Result:
         if other.errors:
             self.errors.extend(other.errors)
         if other.columns:
-            self.columns.extend(other.columns)
+            self._add_columns(other.columns)
 
     def unwrap_single_element_lists(self):
         """Unwrap single-element lists to scalar values and sanitize NaN/Inf.
