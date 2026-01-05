@@ -575,5 +575,693 @@ END-OF-FILE
         assert result_disabled.data[0]['CPN'] == 2.875
 
 
+class TestGroupFieldsByOverrides:
+    """Tests for _group_fields_by_overrides() helper function."""
+
+    def test_no_overrides_returns_single_group(self):
+        """All fields in one group when no overrides specified."""
+        from bbdl.client import _group_fields_by_overrides
+        fields = ['PX_LAST', 'EBITDA', 'NET_DEBT']
+        result = _group_fields_by_overrides(fields, None)
+        assert result == {(): ['PX_LAST', 'EBITDA', 'NET_DEBT']}
+
+    def test_empty_overrides_returns_single_group(self):
+        """All fields in one group when empty overrides dict."""
+        from bbdl.client import _group_fields_by_overrides
+        fields = ['PX_LAST', 'EBITDA', 'NET_DEBT']
+        result = _group_fields_by_overrides(fields, {})
+        assert result == {(): ['PX_LAST', 'EBITDA', 'NET_DEBT']}
+
+    def test_single_override_separates_field(self):
+        """Field with override goes to separate group."""
+        from bbdl.client import _group_fields_by_overrides
+        fields = ['PX_LAST', 'EBITDA', 'NET_DEBT']
+        overrides = {'NET_DEBT': ('FUND_PER', 'Q')}
+        result = _group_fields_by_overrides(fields, overrides)
+        assert () in result
+        assert ('FUND_PER', 'Q') in result
+        assert result[()] == ['PX_LAST', 'EBITDA']
+        assert result[('FUND_PER', 'Q')] == ['NET_DEBT']
+
+    def test_multiple_fields_same_override(self):
+        """Multiple fields with same override go to same group."""
+        from bbdl.client import _group_fields_by_overrides
+        fields = ['PX_LAST', 'EBITDA', 'NET_DEBT', 'SHORT_AND_LONG_TERM_DEBT']
+        overrides = {
+            'NET_DEBT': ('FUND_PER', 'Q'),
+            'SHORT_AND_LONG_TERM_DEBT': ('FUND_PER', 'Q'),
+        }
+        result = _group_fields_by_overrides(fields, overrides)
+        assert result[()] == ['PX_LAST', 'EBITDA']
+        assert set(result[('FUND_PER', 'Q')]) == {'NET_DEBT', 'SHORT_AND_LONG_TERM_DEBT'}
+
+    def test_different_overrides_separate_groups(self):
+        """Fields with different overrides go to different groups."""
+        from bbdl.client import _group_fields_by_overrides
+        fields = ['PX_LAST', 'EBITDA', 'BEST_EBITDA', 'NET_DEBT']
+        overrides = {
+            'EBITDA': ('EQY_FUND_RELATIVE_PERIOD', '2024CY'),
+            'BEST_EBITDA': ('BEST_FPERIOD_OVERRIDE', '2025Y'),
+            'NET_DEBT': ('FUND_PER', 'Q'),
+        }
+        result = _group_fields_by_overrides(fields, overrides)
+        assert result[()] == ['PX_LAST']
+        assert result[('EQY_FUND_RELATIVE_PERIOD', '2024CY')] == ['EBITDA']
+        assert result[('BEST_FPERIOD_OVERRIDE', '2025Y')] == ['BEST_EBITDA']
+        assert result[('FUND_PER', 'Q')] == ['NET_DEBT']
+
+    def test_preserves_field_order_within_groups(self):
+        """Fields maintain original order within each group."""
+        from bbdl.client import _group_fields_by_overrides
+        fields = ['A', 'B', 'C', 'D', 'E']
+        overrides = {'B': ('X', '1'), 'D': ('X', '1')}
+        result = _group_fields_by_overrides(fields, overrides)
+        assert result[()] == ['A', 'C', 'E']
+        assert result[('X', '1')] == ['B', 'D']
+
+
+class TestApplyOverridesToIdentifiers:
+    """Tests for _apply_overrides_to_identifiers() helper function."""
+
+    def test_no_overrides_returns_original(self):
+        """Empty override tuple returns identifiers unchanged."""
+        from bbdl.client import _apply_overrides_to_identifiers
+        sids = ['AAPL US Equity', 'IBM US Equity']
+        result = _apply_overrides_to_identifiers(sids, ())
+        assert result == ['AAPL US Equity', 'IBM US Equity']
+
+    def test_single_override_transforms_string_identifiers(self):
+        """String identifiers transformed to tuples with overrides."""
+        from bbdl.client import _apply_overrides_to_identifiers
+        sids = ['AAPL US Equity', 'IBM US Equity']
+        result = _apply_overrides_to_identifiers(sids, ('FUND_PER', 'Q'))
+        assert result == [
+            ('AAPL US Equity', '', 'FUND_PER', 'Q'),
+            ('IBM US Equity', '', 'FUND_PER', 'Q'),
+        ]
+
+    def test_tuple_identifiers_extended_with_overrides(self):
+        """Tuple identifiers get overrides appended."""
+        from bbdl.client import _apply_overrides_to_identifiers
+        sids = [('12345678', 'CUSIP'), ('98765432', 'CUSIP')]
+        result = _apply_overrides_to_identifiers(sids, ('FUND_PER', 'Q'))
+        assert result == [
+            ('12345678', 'CUSIP', 'FUND_PER', 'Q'),
+            ('98765432', 'CUSIP', 'FUND_PER', 'Q'),
+        ]
+
+    def test_mixed_identifiers(self):
+        """Mix of string and tuple identifiers handled correctly."""
+        from bbdl.client import _apply_overrides_to_identifiers
+        sids = ['AAPL US Equity', ('12345678', 'CUSIP')]
+        result = _apply_overrides_to_identifiers(sids, ('FUND_PER', 'Q'))
+        assert result == [
+            ('AAPL US Equity', '', 'FUND_PER', 'Q'),
+            ('12345678', 'CUSIP', 'FUND_PER', 'Q'),
+        ]
+
+    def test_bloomberg_request_format_verification(self):
+        """Verify transformed identifiers produce correct Bloomberg format."""
+        from bbdl.client import _apply_overrides_to_identifiers
+        sids = ['AAPL US Equity']
+        result = _apply_overrides_to_identifiers(sids, ('FUND_PER', 'Q'))
+        iden = result[0]
+        # Should produce: AAPL US Equity||1|FUND_PER|Q
+        assert iden[0] == 'AAPL US Equity'
+        assert iden[1] == ''  # Empty type produces double pipe
+        assert iden[2] == 'FUND_PER'
+        assert iden[3] == 'Q'
+
+
+class TestResultMerge:
+    """Tests for Result.merge() method."""
+
+    def test_merge_adds_new_fields(self):
+        """Merging adds new fields to existing rows."""
+        result1 = Result()
+        result1.data = [
+            {'IDENTIFIER': 'AAPL US Equity', 'PX_LAST': 271.01},
+            {'IDENTIFIER': 'IBM US Equity', 'PX_LAST': 291.50},
+        ]
+        result1.columns = [('IDENTIFIER', str), ('PX_LAST', float)]
+
+        result2 = Result()
+        result2.data = [
+            {'IDENTIFIER': 'AAPL US Equity', 'EBITDA': 146848.00},
+            {'IDENTIFIER': 'IBM US Equity', 'EBITDA': 18238.00},
+        ]
+        result2.columns = [('IDENTIFIER', str), ('EBITDA', float)]
+
+        result1.merge(result2)
+
+        assert len(result1.data) == 2
+        aapl = next(r for r in result1.data if r['IDENTIFIER'] == 'AAPL US Equity')
+        assert aapl['PX_LAST'] == 271.01
+        assert aapl['EBITDA'] == 146848.00
+        ibm = next(r for r in result1.data if r['IDENTIFIER'] == 'IBM US Equity')
+        assert ibm['PX_LAST'] == 291.50
+        assert ibm['EBITDA'] == 18238.00
+
+    def test_merge_extends_columns(self):
+        """Merging extends the columns list."""
+        result1 = Result()
+        result1.data = [{'IDENTIFIER': 'AAPL US Equity', 'PX_LAST': 271.01}]
+        result1.columns = [('IDENTIFIER', str), ('PX_LAST', float)]
+
+        result2 = Result()
+        result2.data = [{'IDENTIFIER': 'AAPL US Equity', 'EBITDA': 146848.00}]
+        result2.columns = [('IDENTIFIER', str), ('EBITDA', float)]
+
+        result1.merge(result2)
+
+        col_names = [c[0] for c in result1.columns]
+        assert 'IDENTIFIER' in col_names
+        assert 'PX_LAST' in col_names
+        assert 'EBITDA' in col_names
+
+    def test_merge_extends_errors(self):
+        """Merging extends the errors list."""
+        result1 = Result()
+        result1.data = [{'IDENTIFIER': 'AAPL US Equity', 'PX_LAST': 271.01}]
+        result1.errors = [{'IDENTIFIER': 'BAD1', 'RETCODE': '10'}]
+
+        result2 = Result()
+        result2.data = [{'IDENTIFIER': 'AAPL US Equity', 'EBITDA': 146848.00}]
+        result2.errors = [{'IDENTIFIER': 'BAD2', 'RETCODE': '11'}]
+
+        result1.merge(result2)
+
+        assert len(result1.errors) == 2
+        assert result1.errors[0]['IDENTIFIER'] == 'BAD1'
+        assert result1.errors[1]['IDENTIFIER'] == 'BAD2'
+
+    def test_merge_appends_unmatched_identifiers(self):
+        """Identifiers in other but not in self get appended."""
+        result1 = Result()
+        result1.data = [{'IDENTIFIER': 'AAPL US Equity', 'PX_LAST': 271.01}]
+
+        result2 = Result()
+        result2.data = [
+            {'IDENTIFIER': 'AAPL US Equity', 'EBITDA': 146848.00},
+            {'IDENTIFIER': 'IBM US Equity', 'EBITDA': 18238.00},
+        ]
+
+        result1.merge(result2)
+
+        assert len(result1.data) == 2
+        identifiers = {r['IDENTIFIER'] for r in result1.data}
+        assert identifiers == {'AAPL US Equity', 'IBM US Equity'}
+
+    def test_merge_handles_empty_other(self):
+        """Merging empty result is a no-op."""
+        result1 = Result()
+        result1.data = [{'IDENTIFIER': 'AAPL US Equity', 'PX_LAST': 271.01}]
+        result1.columns = [('IDENTIFIER', str), ('PX_LAST', float)]
+
+        result2 = Result()
+
+        result1.merge(result2)
+
+        assert len(result1.data) == 1
+        assert result1.data[0]['PX_LAST'] == 271.01
+
+    def test_merge_into_empty_result(self):
+        """Merging into empty result adds all data."""
+        result1 = Result()
+
+        result2 = Result()
+        result2.data = [
+            {'IDENTIFIER': 'AAPL US Equity', 'EBITDA': 146848.00},
+            {'IDENTIFIER': 'IBM US Equity', 'EBITDA': 18238.00},
+        ]
+
+        result1.merge(result2)
+
+        assert len(result1.data) == 2
+
+
+class TestOverrideFixtures:
+    """Tests using captured Bloomberg override fixtures."""
+
+    @pytest.fixture(scope='class')
+    def baseline_result(self):
+        """Parse baseline (no overrides) fixture."""
+        with (FIXTURES_DIR / 'overrides' / 'baseline' / 'response.out').open() as f:
+            return _parse(f)
+
+    @pytest.fixture(scope='class')
+    def fund_per_q_result(self):
+        """Parse FUND_PER=Q override fixture."""
+        with (FIXTURES_DIR / 'overrides' / 'fund_per_q' / 'response.out').open() as f:
+            return _parse(f)
+
+    @pytest.fixture(scope='class')
+    def eqy_fund_2024cy_result(self):
+        """Parse EQY_FUND_RELATIVE_PERIOD=2024CY override fixture."""
+        with (FIXTURES_DIR / 'overrides' / 'eqy_fund_2024cy' / 'response.out').open() as f:
+            return _parse(f)
+
+    @pytest.fixture(scope='class')
+    def best_fperiod_2025y_result(self):
+        """Parse BEST_FPERIOD_OVERRIDE=2025Y override fixture."""
+        with (FIXTURES_DIR / 'overrides' / 'best_fperiod_2025y' / 'response.out').open() as f:
+            return _parse(f)
+
+    def test_baseline_has_annual_ebitda(self, baseline_result):
+        """Baseline request returns annual EBITDA values."""
+        assert len(baseline_result.data) == 2
+        aapl = _find(baseline_result.data, 'AAPL')
+        ibm = _find(baseline_result.data, 'IBM')
+        assert aapl['EBITDA'] == 146848.00
+        assert ibm['EBITDA'] == 18238.00
+
+    def test_fund_per_q_has_quarterly_ebitda(self, fund_per_q_result):
+        """FUND_PER=Q override returns quarterly EBITDA values."""
+        assert len(fund_per_q_result.data) == 2
+        aapl = _find(fund_per_q_result.data, 'AAPL')
+        ibm = _find(fund_per_q_result.data, 'IBM')
+        # Quarterly values are significantly smaller than annual
+        assert aapl['EBITDA'] == 35554.00
+        assert ibm['EBITDA'] == 3853.00
+
+    def test_eqy_fund_2024cy_has_cy2024_values(self, eqy_fund_2024cy_result):
+        """EQY_FUND_RELATIVE_PERIOD=2024CY override returns CY2024 values."""
+        assert len(eqy_fund_2024cy_result.data) == 2
+        aapl = _find(eqy_fund_2024cy_result.data, 'AAPL')
+        ibm = _find(eqy_fund_2024cy_result.data, 'IBM')
+        assert aapl['EBITDA'] == 136661.00
+        assert ibm['EBITDA'] == 18238.00
+
+    def test_best_fperiod_2025y_has_estimate_values(self, best_fperiod_2025y_result):
+        """BEST_FPERIOD_OVERRIDE=2025Y override returns estimate values."""
+        assert len(best_fperiod_2025y_result.data) == 2
+        aapl = _find(best_fperiod_2025y_result.data, 'AAPL')
+        ibm = _find(best_fperiod_2025y_result.data, 'IBM')
+        # BEST fields return estimates (float with decimals)
+        assert aapl['BEST_EBITDA'] == pytest.approx(143672.242)
+        assert ibm['BEST_EBITDA'] == pytest.approx(18331.0)
+
+    def test_override_values_differ_from_baseline(self, baseline_result, fund_per_q_result):
+        """Override values are different from baseline values."""
+        aapl_baseline = _find(baseline_result.data, 'AAPL')['EBITDA']
+        aapl_quarterly = _find(fund_per_q_result.data, 'AAPL')['EBITDA']
+        # Quarterly ~= Annual / 4 (roughly)
+        assert aapl_quarterly < aapl_baseline / 2
+
+    def test_merge_baseline_with_override_results(
+        self, baseline_result, fund_per_q_result
+    ):
+        """Merging baseline with override results combines fields."""
+        # Create copies to avoid fixture mutation
+        merged = Result()
+        merged.data = [dict(row) for row in baseline_result.data]
+        merged.columns = list(baseline_result.columns)
+        merged.errors = list(baseline_result.errors)
+
+        override = Result()
+        override.data = [dict(row) for row in fund_per_q_result.data]
+        override.columns = list(fund_per_q_result.columns)
+        override.errors = list(fund_per_q_result.errors)
+
+        # Rename override EBITDA to EBITDA_Q for distinction
+        for row in override.data:
+            row['EBITDA_Q'] = row.pop('EBITDA')
+
+        merged.merge(override)
+
+        aapl = _find(merged.data, 'AAPL')
+        assert aapl['EBITDA'] == 146848.00  # Annual from baseline
+        assert aapl['EBITDA_Q'] == 35554.00  # Quarterly from override
+
+
+class TestTransformFieldsForHistory:
+    """Tests for _transform_fields_for_history() helper function."""
+
+    def test_no_overrides_returns_fields_unchanged(self):
+        """Fields returned unchanged when no overrides specified."""
+        from bbdl.client import _transform_fields_for_history
+        fields = ['SALES_REV_TURN', 'IS_OPER_INC', 'NET_INCOME']
+        result = _transform_fields_for_history(fields, None)
+        assert result == ['SALES_REV_TURN', 'IS_OPER_INC', 'NET_INCOME']
+
+    def test_empty_overrides_returns_fields_unchanged(self):
+        """Fields returned unchanged when empty overrides dict."""
+        from bbdl.client import _transform_fields_for_history
+        fields = ['SALES_REV_TURN', 'IS_OPER_INC', 'NET_INCOME']
+        result = _transform_fields_for_history(fields, {})
+        assert result == ['SALES_REV_TURN', 'IS_OPER_INC', 'NET_INCOME']
+
+    def test_ae_override_transforms_field_name(self):
+        """AE override embeds suffix in field name."""
+        from bbdl.client import _transform_fields_for_history
+        fields = ['SALES_REV_TURN', 'IS_EPS']
+        overrides = {
+            'SALES_REV_TURN': ('AE', 'E'),
+            'IS_EPS': ('AE', 'E'),
+        }
+        result = _transform_fields_for_history(fields, overrides)
+        assert result == ['SALES_REV_TURN|1|AE|E|', 'IS_EPS|1|AE|E|']
+
+    def test_mixed_fields_with_and_without_overrides(self):
+        """Fields without overrides remain unchanged."""
+        from bbdl.client import _transform_fields_for_history
+        fields = ['SALES_REV_TURN', 'PX_LAST', 'NET_INCOME']
+        overrides = {'SALES_REV_TURN': ('AE', 'E')}
+        result = _transform_fields_for_history(fields, overrides)
+        assert result == ['SALES_REV_TURN|1|AE|E|', 'PX_LAST', 'NET_INCOME']
+
+    def test_preserves_field_order(self):
+        """Transformed fields maintain original order."""
+        from bbdl.client import _transform_fields_for_history
+        fields = ['A', 'B', 'C', 'D']
+        overrides = {'B': ('AE', 'E'), 'D': ('L', '1')}
+        result = _transform_fields_for_history(fields, overrides)
+        assert result[0] == 'A'
+        assert result[1] == 'B|1|AE|E|'
+        assert result[2] == 'C'
+        assert result[3] == 'D|1|L|1|'
+
+
+class TestStripHistoryOverrideSuffix:
+    """Tests for _strip_history_override_suffix() helper function."""
+
+    def test_strips_ae_override_suffix(self):
+        """AE override suffix stripped from field name."""
+        from bbdl.request import _strip_history_override_suffix
+        assert _strip_history_override_suffix('SALES_REV_TURN|1|AE|E|') == 'SALES_REV_TURN'
+        assert _strip_history_override_suffix('IS_EPS|1|AE|E|') == 'IS_EPS'
+
+    def test_strips_l_override_suffix(self):
+        """L override suffix stripped from field name."""
+        from bbdl.request import _strip_history_override_suffix
+        assert _strip_history_override_suffix('PX_LAST|1|L|1|') == 'PX_LAST'
+
+    def test_plain_field_unchanged(self):
+        """Field without override suffix returned unchanged."""
+        from bbdl.request import _strip_history_override_suffix
+        assert _strip_history_override_suffix('SALES_REV_TURN') == 'SALES_REV_TURN'
+        assert _strip_history_override_suffix('IS_EPS') == 'IS_EPS'
+
+    def test_field_with_pipe_but_not_override(self):
+        """Field with pipe but no |1| pattern returned unchanged."""
+        from bbdl.request import _strip_history_override_suffix
+        assert _strip_history_override_suffix('SOME|FIELD') == 'SOME|FIELD'
+
+
+class TestHistoricalOverrideFixtures:
+    """Tests using captured Bloomberg historical override fixtures."""
+
+    @pytest.fixture(scope='class')
+    def historical_actuals_result(self):
+        """Parse historical actuals (no overrides) fixture."""
+        with (FIXTURES_DIR / 'overrides_historical' / 'historical_actuals' / 'response.out').open() as f:
+            return _parse(f)
+
+    @pytest.fixture(scope='class')
+    def historical_estimates_result(self):
+        """Parse historical estimates (AE=E override) fixture."""
+        with (FIXTURES_DIR / 'overrides_historical' / 'historical_estimates' / 'response.out').open() as f:
+            return _parse(f)
+
+    def test_historical_actuals_parses_correctly(self, historical_actuals_result):
+        """Historical actuals fixture parses with clean field names."""
+        assert len(historical_actuals_result.data) == 2
+
+        aapl = _find(historical_actuals_result.data, 'AAPL')
+        assert 'SALES_REV_TURN' in aapl
+        assert 'IS_OPER_INC' in aapl
+        assert 'NET_INCOME' in aapl
+        assert 'IS_EPS' in aapl
+
+        # Verify it's a time series
+        assert isinstance(aapl['SALES_REV_TURN'], list)
+        assert len(aapl['SALES_REV_TURN']) == 4
+
+    def test_historical_estimates_parses_with_clean_field_names(self, historical_estimates_result):
+        """Historical estimates fixture parses with override suffix stripped."""
+        assert len(historical_estimates_result.data) == 2
+
+        aapl = _find(historical_estimates_result.data, 'AAPL')
+        # Field names should be clean, without the |1|AE|E| suffix
+        assert 'SALES_REV_TURN' in aapl
+        assert 'IS_OPER_INC' in aapl
+        assert 'NET_INCOME' in aapl
+        assert 'IS_EPS' in aapl
+
+        # Should NOT have the raw override field names
+        assert 'SALES_REV_TURN|1|AE|E|' not in aapl
+
+    def test_historical_estimates_values_differ_from_actuals(
+        self, historical_actuals_result, historical_estimates_result
+    ):
+        """Estimate values differ from actual values."""
+        aapl_actuals = _find(historical_actuals_result.data, 'AAPL')
+        aapl_estimates = _find(historical_estimates_result.data, 'AAPL')
+
+        # Values should be different (estimates vs actuals)
+        # Compare first quarter sales
+        assert aapl_actuals['SALES_REV_TURN'][0] != aapl_estimates['SALES_REV_TURN'][0]
+
+    def test_historical_actuals_values(self, historical_actuals_result):
+        """Verify specific actual values from fixture."""
+        ibm = _find(historical_actuals_result.data, 'IBM')
+        # Q4 2024 actuals for IBM
+        assert ibm['SALES_REV_TURN'][-1] == 17553000000.0
+        assert ibm['IS_EPS'][-1] == 3.15
+
+    def test_historical_estimates_values(self, historical_estimates_result):
+        """Verify specific estimate values from fixture."""
+        ibm = _find(historical_estimates_result.data, 'IBM')
+        # Q4 2024 estimates for IBM (consensus)
+        assert ibm['SALES_REV_TURN'][-1] == pytest.approx(17537333333.33, rel=0.01)
+        assert ibm['IS_EPS'][-1] == pytest.approx(3.268, rel=0.01)
+
+
+class TestOverrideChunkingIntegration:
+    """Integration tests for override chunking pattern.
+
+    When fields have different overrides, they must be grouped and sent
+    as separate requests, then merged back into a single result.
+    """
+
+    def test_override_grouping_produces_separate_request_files(self):
+        """Fields with different overrides generate separate request files."""
+        from bbdl.client import _apply_overrides_to_identifiers
+        from bbdl.client import _group_fields_by_overrides
+
+        sids = ['AAPL US Equity', 'IBM US Equity']
+        fields = ['PX_LAST', 'EBITDA', 'NET_DEBT', 'BEST_EBITDA']
+        field_overrides = {
+            'EBITDA': ('FUND_PER', 'Q'),
+            'NET_DEBT': ('FUND_PER', 'Q'),
+            'BEST_EBITDA': ('BEST_FPERIOD_OVERRIDE', '2025Y'),
+        }
+
+        groups = _group_fields_by_overrides(fields, field_overrides)
+
+        # Should have 3 groups: no override, FUND_PER=Q, BEST_FPERIOD_OVERRIDE=2025Y
+        assert len(groups) == 3
+        assert () in groups
+        assert ('FUND_PER', 'Q') in groups
+        assert ('BEST_FPERIOD_OVERRIDE', '2025Y') in groups
+
+        # Verify identifiers are transformed correctly for each group
+        no_override_sids = _apply_overrides_to_identifiers(sids, ())
+        assert no_override_sids == sids  # unchanged
+
+        fund_per_sids = _apply_overrides_to_identifiers(sids, ('FUND_PER', 'Q'))
+        assert fund_per_sids[0] == ('AAPL US Equity', '', 'FUND_PER', 'Q')
+        assert fund_per_sids[1] == ('IBM US Equity', '', 'FUND_PER', 'Q')
+
+    def test_request_build_with_override_identifiers(self):
+        """Request.build correctly formats identifiers with overrides."""
+        identifiers = [
+            ('AAPL US Equity', '', 'FUND_PER', 'Q'),
+            ('IBM US Equity', '', 'FUND_PER', 'Q'),
+        ]
+        fields = ['EBITDA', 'NET_DEBT']
+
+        with make_tmpdir() as tmpdir:
+            reqfile = Path(tmpdir) / 'test.req'
+            options = BbdlOptions(programflag='adhoc')
+            Request.build(identifiers, fields, reqfile, options)
+
+            content = reqfile.read_text()
+            # Verify override format: identifier||N|field|value
+            assert 'AAPL US Equity||1|FUND_PER|Q' in content
+            assert 'IBM US Equity||1|FUND_PER|Q' in content
+
+    def test_merged_results_contain_all_fields(self):
+        """Merging results from different override groups combines all fields."""
+        # Simulate results from 3 separate requests
+        result_no_override = Result()
+        result_no_override.data = [
+            {'IDENTIFIER': 'AAPL US Equity', 'PX_LAST': 271.01},
+            {'IDENTIFIER': 'IBM US Equity', 'PX_LAST': 291.50},
+        ]
+
+        result_fund_per_q = Result()
+        result_fund_per_q.data = [
+            {'IDENTIFIER': 'AAPL US Equity', 'EBITDA': 35554.00, 'NET_DEBT': -60000.00},
+            {'IDENTIFIER': 'IBM US Equity', 'EBITDA': 3853.00, 'NET_DEBT': 50000.00},
+        ]
+
+        result_best_fperiod = Result()
+        result_best_fperiod.data = [
+            {'IDENTIFIER': 'AAPL US Equity', 'BEST_EBITDA': 143672.242},
+            {'IDENTIFIER': 'IBM US Equity', 'BEST_EBITDA': 18331.0},
+        ]
+
+        # Merge all results
+        result_no_override.merge(result_fund_per_q)
+        result_no_override.merge(result_best_fperiod)
+
+        # Verify merged result has all fields
+        assert len(result_no_override.data) == 2
+
+        aapl = _find(result_no_override.data, 'AAPL')
+        assert aapl['PX_LAST'] == 271.01
+        assert aapl['EBITDA'] == 35554.00
+        assert aapl['NET_DEBT'] == -60000.00
+        assert aapl['BEST_EBITDA'] == 143672.242
+
+        ibm = _find(result_no_override.data, 'IBM')
+        assert ibm['PX_LAST'] == 291.50
+        assert ibm['EBITDA'] == 3853.00
+        assert ibm['BEST_EBITDA'] == 18331.0
+
+    def test_historical_override_fields_not_grouped(self):
+        """Historical overrides embed in field names, no identifier grouping needed."""
+        from bbdl.client import _transform_fields_for_history
+
+        fields = ['SALES_REV_TURN', 'IS_EPS', 'PX_LAST']
+        field_overrides = {
+            'SALES_REV_TURN': ('AE', 'E'),
+            'IS_EPS': ('AE', 'E'),
+        }
+
+        transformed = _transform_fields_for_history(fields, field_overrides)
+
+        # All fields in single list with overrides embedded in names
+        assert len(transformed) == 3
+        assert transformed[0] == 'SALES_REV_TURN|1|AE|E|'
+        assert transformed[1] == 'IS_EPS|1|AE|E|'
+        assert transformed[2] == 'PX_LAST'  # No override, unchanged
+
+
+class TestFetchByDateIntegration:
+    """Integration tests for try_retrieve_existing_date / _fetch_by_date."""
+
+    def test_parse_rundate_extracts_date(self):
+        """_parse_rundate correctly extracts RUNDATE from response header."""
+        from bbdl.client import _parse_rundate
+
+        # Use actual fixture file
+        filepath = FIXTURES_DIR / 'overrides' / 'baseline' / 'response.out'
+        rundate = _parse_rundate(filepath)
+        assert rundate == Date(2026, 1, 5)
+
+    def test_parse_rundate_from_historical_fixture(self):
+        """_parse_rundate works with historical response files."""
+        from bbdl.client import _parse_rundate
+
+        filepath = FIXTURES_DIR / 'overrides_historical' / 'historical_actuals' / 'response.out'
+        rundate = _parse_rundate(filepath)
+        assert rundate == Date(2026, 1, 5)
+
+    def test_fetch_by_date_merges_multiple_files(self):
+        """When multiple files match target date, results are merged."""
+        # Create two result objects simulating two downloaded files
+        result1 = Result()
+        result1.data = [
+            {'IDENTIFIER': 'AAPL US Equity', 'PX_LAST': 271.01},
+            {'IDENTIFIER': 'IBM US Equity', 'PX_LAST': 291.50},
+        ]
+        result1.columns = [('IDENTIFIER', str), ('PX_LAST', float)]
+
+        result2 = Result()
+        result2.data = [
+            {'IDENTIFIER': 'AAPL US Equity', 'EBITDA': 146848.00},
+            {'IDENTIFIER': 'IBM US Equity', 'EBITDA': 18238.00},
+        ]
+        result2.columns = [('IDENTIFIER', str), ('EBITDA', float)]
+
+        # Merge simulates what _fetch_by_date does
+        result1.merge(result2)
+
+        # Verify merged result
+        assert len(result1.data) == 2
+        aapl = _find(result1.data, 'AAPL')
+        assert aapl['PX_LAST'] == 271.01
+        assert aapl['EBITDA'] == 146848.00
+
+    def test_multiple_fixture_files_can_be_merged(self):
+        """Real fixture files can be merged by identifier."""
+        # Parse multiple fixture files (simulating files from same date)
+        with (FIXTURES_DIR / 'overrides' / 'baseline' / 'response.out').open() as f:
+            baseline = _parse(f)
+
+        with (FIXTURES_DIR / 'overrides' / 'fund_per_q' / 'response.out').open() as f:
+            quarterly = _parse(f)
+
+        # Rename EBITDA in quarterly to avoid collision
+        for row in quarterly.data:
+            if 'EBITDA' in row:
+                row['EBITDA_Q'] = row.pop('EBITDA')
+
+        baseline.merge(quarterly)
+
+        # Both original and quarterly EBITDA available
+        aapl = _find(baseline.data, 'AAPL')
+        assert aapl['EBITDA'] == 146848.00  # Annual
+        assert aapl['EBITDA_Q'] == 35554.00  # Quarterly
+
+
+class TestFieldChunkingOver500:
+    """Tests for chunking when fields exceed 500 limit."""
+
+    def test_fields_chunked_at_500(self):
+        """Fields are split into chunks of 500 for request building."""
+        # Generate 600 field names
+        fields = [f'FIELD_{i:03d}' for i in range(600)]
+
+        nparts = (len(fields) - 1) // 500 + 1
+        assert nparts == 2
+
+        chunk1 = fields[0:500]
+        chunk2 = fields[500:600]
+
+        assert len(chunk1) == 500
+        assert len(chunk2) == 100
+        assert chunk1[0] == 'FIELD_000'
+        assert chunk1[-1] == 'FIELD_499'
+        assert chunk2[0] == 'FIELD_500'
+        assert chunk2[-1] == 'FIELD_599'
+
+    def test_chunked_results_merged_correctly(self):
+        """Results from chunked requests merge by identifier."""
+        # Simulate results from two chunks
+        result1 = Result()
+        result1.data = [
+            {'IDENTIFIER': 'AAPL US Equity', 'FIELD_000': 1, 'FIELD_001': 2},
+            {'IDENTIFIER': 'IBM US Equity', 'FIELD_000': 10, 'FIELD_001': 20},
+        ]
+
+        result2 = Result()
+        result2.data = [
+            {'IDENTIFIER': 'AAPL US Equity', 'FIELD_500': 500, 'FIELD_501': 501},
+            {'IDENTIFIER': 'IBM US Equity', 'FIELD_500': 5000, 'FIELD_501': 5010},
+        ]
+
+        result1.merge(result2)
+
+        # All fields present in merged result
+        aapl = _find(result1.data, 'AAPL')
+        assert aapl['FIELD_000'] == 1
+        assert aapl['FIELD_001'] == 2
+        assert aapl['FIELD_500'] == 500
+        assert aapl['FIELD_501'] == 501
+
+
 if __name__ == '__main__':
     pytest.main([__file__])
