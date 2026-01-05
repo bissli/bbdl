@@ -693,6 +693,40 @@ class TestApplyOverridesToIdentifiers:
         assert iden[3] == 'Q'
 
 
+class TestResultColumnsProperty:
+    """Tests for Result.columns property behavior."""
+
+    def test_columns_getter_does_not_mutate(self):
+        """Accessing columns property should not mutate internal state."""
+        result = Result()
+        result._columns = [('A', str), ('B', int), ('A', str)]  # Duplicates
+
+        columns1 = result.columns
+        columns2 = result.columns
+
+        assert columns1 is columns2
+        assert len(columns1) == 3
+
+    def test_columns_setter_deduplicates(self):
+        """Setting columns should deduplicate the list."""
+        result = Result()
+        result.columns = [('A', str), ('B', int), ('A', str), ('B', int)]
+
+        assert len(result.columns) == 2
+        assert result.columns == [('A', str), ('B', int)]
+
+    def test_add_columns_deduplicates(self):
+        """_add_columns should deduplicate when adding new columns."""
+        result = Result()
+        result.columns = [('A', str), ('B', int)]
+        result._add_columns([('B', int), ('C', float), ('A', str)])
+
+        assert len(result.columns) == 3
+        assert ('A', str) in result.columns
+        assert ('B', int) in result.columns
+        assert ('C', float) in result.columns
+
+
 class TestResultMerge:
     """Tests for Result.merge() method."""
 

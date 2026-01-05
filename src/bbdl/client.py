@@ -247,6 +247,7 @@ class SFTPClient:
         """Find and download all files for target_date, combining results.
 
         Files contain RUNDATE header - match against target_date.
+        Downloads are cached in tempdir to avoid redundant re-downloads.
         """
         files = self.cn.files()
         result = Result()
@@ -256,7 +257,9 @@ class SFTPClient:
             if '.out' not in filename or not filename.startswith('fprp'):
                 continue
             localpath = self.options.tempdir / filename
-            self.cn.getbinary(filename, localpath)
+
+            if not localpath.exists():
+                self.cn.getbinary(filename, localpath)
 
             rundate = _parse_rundate(localpath)
             if rundate == target_date:
