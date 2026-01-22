@@ -414,7 +414,7 @@ class Ticker:
         """Fix case of BB ticker to <upper> <upper> ... <capitalized>
         so '01234abc89 Us EQUITY' goes to '01234ABC89 US Equity'
         """
-        if not ticker:
+        if not isinstance(ticker, str) or not ticker:
             return None
         if ' ' not in ticker:
             return ticker.upper()
@@ -426,7 +426,7 @@ class Ticker:
         """Determine if ticker is a valid Bloomberg ticker. Not perfect.
         Must be of form <ticker> [extra] <type>.
         """
-        if not ticker:
+        if not isinstance(ticker, str) or not ticker:
             return False
         bits = ticker.split(' ')
         if len(bits) < 2:

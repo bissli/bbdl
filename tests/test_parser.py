@@ -1,5 +1,6 @@
 """Unit tests for bbdl.parser module."""
 
+import numpy as np
 import pytest
 
 from bbdl.parser import Field, Ticker, _is_null, to_date, to_datetime, to_time
@@ -242,6 +243,16 @@ class TestTickerFixCase:
     def test_empty_string(self):
         assert Ticker.fix_case('') is None
 
+    def test_nan_returns_none(self):
+        """NaN from pandas should return None, not raise TypeError."""
+        assert Ticker.fix_case(np.nan) is None
+
+    def test_non_string_types(self):
+        """Non-string types should return None."""
+        assert Ticker.fix_case(123) is None
+        assert Ticker.fix_case(12.34) is None
+        assert Ticker.fix_case(['list']) is None
+
 
 class TestTickerIsBbTicker:
     """Test Ticker.is_bb_ticker method."""
@@ -267,6 +278,15 @@ class TestTickerIsBbTicker:
 
     def test_empty_string(self):
         assert Ticker.is_bb_ticker('') is False
+
+    def test_nan_returns_false(self):
+        """NaN from pandas should return False, not raise TypeError."""
+        assert Ticker.is_bb_ticker(np.nan) is False
+
+    def test_non_string_types(self):
+        """Non-string types should return False."""
+        assert Ticker.is_bb_ticker(123) is False
+        assert Ticker.is_bb_ticker(12.34) is False
 
     def test_all_yellow_keys(self):
         """Test all valid yellow keys."""
