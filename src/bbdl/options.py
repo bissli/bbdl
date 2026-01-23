@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from bbdl.exceptions import BbdlValidationError
-from date import Date
+from opendate import Date
 from libb import ConfigOptions, get_tempdir
 
 __all__ = ['BbdlOptions']

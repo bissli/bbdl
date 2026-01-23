@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Self
 import ftp
 from bbdl.options import BbdlOptions
 from bbdl.request import Request, Result
-from date import Date
+from opendate import Date
 from libb import load_options
 
 if TYPE_CHECKING:

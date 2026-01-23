@@ -246,7 +246,7 @@ Retrieve Existing Files
 Retrieve previously submitted request files by date:
 
 ```python
-from date import Date
+from opendate import Date
 
 with SFTPClient(options) as sftp:
     result = sftp.request(try_retrieve_existing_date=Date(2025, 1, 3))
