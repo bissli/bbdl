@@ -8,7 +8,7 @@ from asserts import assert_equal
 
 from bbdl import BbdlOptions, Request, Result
 from bbdl.request import _parse
-from date import Date
+from opendate import Date
 from libb.dir import make_tmpdir
 
 FIXTURES_DIR = Path(__file__).parent / 'fixtures' / 'samples'

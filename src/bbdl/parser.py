@@ -6,7 +6,7 @@ import re
 
 from bbdl.assets import get_fields
 from bbdl.mappings import BULK_FIELD_KEYS
-from date import Date, DateTime, Time
+from opendate import Date, DateTime, Time
 from libb import OrderedSet, attrdict, cachedstaticproperty, parse_number
 
 logger = logging.getLogger(__name__)

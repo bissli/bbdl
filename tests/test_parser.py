@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 
 from bbdl.parser import Field, Ticker, _is_null, to_date, to_datetime, to_time
-from date import Date
+from opendate import Date
 
 
 class TestIsNull:
