@@ -5,7 +5,7 @@ from unittest.mock import patch
 import numpy as np
 import pytest
 
-from bbdl.parser import Field, Ticker, _is_null, to_date, to_datetime, to_time
+from bbdl.parser import YELLOW_KEYS, Field, Ticker, _is_null, to_date, to_datetime, to_time
 from opendate import Date, DateTime, Time
 
 
@@ -533,6 +533,33 @@ class TestTickerIsBbTicker:
         """Non-string types should return False."""
         assert Ticker.is_bb_ticker(123) is False
         assert Ticker.is_bb_ticker(12.34) is False
+
+    @pytest.mark.parametrize('key', YELLOW_KEYS)
+    def test_every_yellow_key_round_trips(self, key):
+        """Verify fix_case restores each key so is_bb_ticker accepts it.
+
+        Mutation: bits[-1].capitalize() in place of the YELLOW_KEYS
+            lookup, which yields 'M-mkt' for 'm-mkt' and ships a
+            miscased key Bloomberg matches case-sensitively.
+        Oracle: YELLOW_KEYS itself, driven over every member, so a key
+            added later is covered the day it lands. The hyphenated
+            M-Mkt is the member capitalize() gets wrong.
+        """
+        fixed = Ticker.fix_case(f'test us {key.lower()}')
+
+        assert fixed == f'TEST US {key}'
+        assert Ticker.is_bb_ticker(fixed)
+
+    def test_non_yellow_key_is_still_capitalized(self):
+        """Verify a trailing word that is not a yellow key is capitalized.
+
+        Mutation: returning bits[-1] unchanged when the lookup misses,
+            which stops fix_case normalizing anything outside the ten
+            keys.
+        Oracle: hand-written 'widget' -> 'Widget', a word absent from
+            YELLOW_KEYS.
+        """
+        assert Ticker.fix_case('IBM US widget') == 'IBM US Widget'
 
     def test_all_yellow_keys(self):
         """Test all valid yellow keys."""

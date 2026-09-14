@@ -340,7 +340,7 @@ class Field:
             # norigbits = len(bits)
             dims = int(bits.pop(0))
             if not 1 <= dims <= 2:
-                raise ValueError('Bulk field dimension not supported: ' + dims)
+                raise ValueError(f'Bulk field dimension not supported: {dims}')
             rows = int(bits.pop(0))
             cols = 1
             if dims > 1:
@@ -406,6 +406,8 @@ class Field:
 YELLOW_KEYS = ('Comdty', 'Equity', 'Muni', 'Pfd', 'M-Mkt',
                'Govt', 'Corp', 'Index', 'Curncy', 'Mtge')
 
+YELLOW_KEY_BY_UPPER = {key.upper(): key for key in YELLOW_KEYS}
+
 
 class Ticker:
 
@@ -419,7 +421,10 @@ class Ticker:
         if ' ' not in ticker:
             return ticker.upper()
         bits = ticker.split(' ')
-        return ' '.join([_.upper() for _ in bits[:-1]] + [bits[-1].capitalize()])
+        # str.capitalize() gives 'M-mkt' for 'm-mkt', so the key's own
+        # spelling has to come from YELLOW_KEYS, not from the input
+        lastkey = YELLOW_KEY_BY_UPPER.get(bits[-1].upper(), bits[-1].capitalize())
+        return ' '.join([_.upper() for _ in bits[:-1]] + [lastkey])
 
     @staticmethod
     def is_bb_ticker(ticker: str | None) -> bool:

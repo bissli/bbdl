@@ -9,7 +9,7 @@ from pathlib import Path
 
 from bbdl.exceptions import BbdlParseError, BbdlTimeoutError
 from bbdl.options import BbdlOptions
-from bbdl.parser import Field
+from bbdl.parser import YELLOW_KEY_BY_UPPER, Field
 from libb import attrdict, unique
 
 __all__ = ['Request', 'Result']
@@ -53,8 +53,6 @@ RC_OK = '0'
 COMPRESS_FLAG = 'COMPRESS=yes'
 HISTORY_PROGRAM = 'PROGRAMNAME=gethistory'
 STATUS_FIELDS = ('IDENTIFIER', 'RETCODE', 'NFIELDS')
-YELLOW_KEYS = ('Comdty', 'Equity', 'Muni', 'Pfd', 'M-Mkt',
-               'Govt', 'Corp', 'Index', 'Curncy', 'Mtge')
 
 ERROR_MESSAGE = {
     '-14': 'Field is not recognized or supported by the gethistory program.',
@@ -249,10 +247,11 @@ class Request:
                 if not isinstance(iden, tuple | list) or len(iden) == 1 or iden[-1] is None:
                     iden = iden[0] if isinstance(iden, tuple | list) else iden
                     origkey = iden.split(' ')[-1]
-                    capkey = origkey.capitalize()
-                    # yellow keys must be properly cased
-                    if capkey in YELLOW_KEYS:
-                        iden = iden.replace(origkey, capkey)
+                    # yellow keys must be properly cased, and
+                    # str.capitalize() gets 'M-Mkt' wrong
+                    properkey = YELLOW_KEY_BY_UPPER.get(origkey.upper())
+                    if properkey:
+                        iden = iden.replace(origkey, properkey)
                     f.write(f'{iden}\n')
                 # other identifiers need a value and a type
                 elif len(iden) == 2:
