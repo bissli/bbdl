@@ -1,2 +1,5 @@
 poetry.lock
 .envrc
+mutants/
+.mutmut-cache
+mutmut-stats.json
