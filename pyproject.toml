@@ -37,7 +37,6 @@ build-backend = "poetry.core.masonry.api"
 source_paths = ["src/bbdl"]
 do_not_mutate = [
   "src/bbdl/assets.py",
-  "src/bbdl/helper.py",
   ]
 also_copy = ["tests/"]
 pytest_add_cli_args_test_selection = ["tests/"]
