@@ -2,8 +2,6 @@ import csv
 import sys
 from pathlib import Path
 
-import pandas as pd
-
 from bbdl.assets import get_assets_path
 from bbdl.exceptions import BbdlValidationError
 from libb import expandabspath
@@ -23,7 +21,6 @@ HEADERS = [
     'Mtge',
     'Field Type',
     ]
-HEADERS_LOOKUP = set(HEADERS)
 
 
 def update_fields_asset(filepath):
@@ -38,8 +35,6 @@ def update_fields_asset(filepath):
     output = get_assets_path('fields.csv')
     output.unlink(missing_ok=True)
 
-    df = pd.read_csv(fields)
-
     with fields.open('r') as fr, output.open('w') as fw:
         fw.write(','.join(HEADERS))
         fw.write('\n')
@@ -47,7 +42,10 @@ def update_fields_asset(filepath):
         header = next(reader)
         for row in reader:
             this_row = dict(zip(header, [c.strip() for c in row]))
-            that_row = [v for k,v in this_row.items() if k in HEADERS_LOOKUP]
+            # index by HEADERS, not by source order: Bloomberg reorders
+            # columns between releases and the header line above is
+            # always written in HEADERS order
+            that_row = [this_row.get(k, '') for k in HEADERS]
             fw.write(','.join(that_row))
             fw.write('\n')
 
