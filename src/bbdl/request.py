@@ -393,6 +393,12 @@ def _parse(f: io.TextIOBase, use_custom_mappings: bool = True):
             status_fields.append('DATE')
         # ignore the last field since the line ends with a |
         flds = line.split('|')[:-1]
+        if len(flds) < len(STATUS_FIELDS):
+            logger.warning(f'Row carries no return code, filing as error: {line!r}')
+            res.errors.append(attrdict(IDENTIFIER=flds[0] if flds else line,
+                                       RETCODE=None, NFIELDS=None,
+                                       RETMSG='row carries no return code'))
+            continue
         if flds[1] == RC_OK:
             row = attrdict(zip(status_fields + fields, flds))
             for fld, val in row.items():

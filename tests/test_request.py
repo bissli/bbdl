@@ -469,6 +469,42 @@ END-OF-FILE
         assert ('NOT_A_REAL_FIELD_XYZ', object) in result.columns
 
 
+    def test_row_too_short_for_a_return_code_is_filed_not_raised(self):
+        """Verify a row with no return code costs its row, not the reply.
+
+        Mutation: indexing flds[1] without the length guard, which is an
+            IndexError on any line carrying no delimiter. Bloomberg's
+            own rejection file echoes the request's identifier lines, so
+            the reply that explains the failure is the one that crashes
+            the parser, and the caller sees a traceback instead of the
+            reason.
+        Oracle: a data block holding one good row, one bare identifier
+            with no delimiter, and one more good row - two values out,
+            the bare line named in errors.
+        """
+        response = """\
+START-OF-FILE
+PROGRAMNAME=getdata
+START-OF-FIELDS
+PX_LAST
+END-OF-FIELDS
+START-OF-DATA
+IBM US Equity|0|1|145.50|
+FSLY US JUL27 35DC VOL BVOL Equity
+AAPL US Equity|0|1|170.86|
+END-OF-DATA
+END-OF-FILE
+"""
+        result = _parse(io.StringIO(response))
+
+        assert [r['IDENTIFIER'] for r in result.data] == [
+            'IBM US Equity', 'AAPL US Equity']
+        assert len(result.errors) == 1
+        assert result.errors[0]['IDENTIFIER'] == (
+            'FSLY US JUL27 35DC VOL BVOL Equity')
+        assert result.errors[0]['RETCODE'] is None
+
+
 class TestRequestBuild:
     """Tests for Request.build()"""
 
