@@ -1,6 +1,7 @@
 """Unit tests for bbdl.request module."""
 
 import io
+import re
 from pathlib import Path
 
 import pytest
@@ -18,6 +19,40 @@ FIXTURES_DIR = Path(__file__).parent / 'fixtures' / 'samples'
 def _find(data, identifier_part):
     """Find a record by partial identifier match."""
     return next(r for r in data if identifier_part in r['IDENTIFIER'])
+
+
+GOLDEN_REQUESTS = sorted(FIXTURES_DIR.rglob('*.req'))
+
+
+def _golden_parts(text):
+    """Recover Request.build's arguments from a committed request file."""
+    def block(start, end):
+        found = re.search(rf'{start}\n(.*?){end}', text, re.S)
+        return [ln for ln in found.group(1).splitlines() if ln.strip()] if found else []
+
+    values = dict(re.findall(r'^([A-Z_]+)=(.*)$', text, re.M))
+    daterange = values.get('DATERANGE')
+    begdate = enddate = None
+    if daterange:
+        begraw, endraw = daterange.split('|')
+        begdate, enddate = Date.parse(begraw), Date.parse(endraw)
+
+    identifiers = []
+    for line in block('START-OF-DATA', 'END-OF-DATA'):
+        bits = line.rstrip('|').split('|')
+        if len(bits) == 1:
+            identifiers.append(bits[0])
+        else:
+            # drop the override count Request.build writes back at index 2
+            identifiers.append(tuple(b for i, b in enumerate(bits) if i != 2))
+
+    header = {
+        'username': None if values['FIRMNAME'] == 'None' else values['FIRMNAME'],
+        'usernumber': values.get('USERNUMBER'),
+        'begdate': begdate,
+        'enddate': enddate,
+        }
+    return block('START-OF-FIELDS', 'END-OF-FIELDS'), identifiers, header
 
 
 class TestResultUnwrapSingleElementLists:
@@ -473,6 +508,41 @@ END-OF-DATA
 END-OF-FILE
 """
             assert_equal(resp, expected)
+
+
+class TestRequestBuildGoldens:
+    """Characterization pin: every committed .req rebuilds byte-for-byte."""
+
+    @pytest.mark.parametrize('golden', GOLDEN_REQUESTS,
+                             ids=[str(p.relative_to(FIXTURES_DIR)) for p in GOLDEN_REQUESTS])
+    def test_golden_request_rebuilds_byte_for_byte(self, golden):
+        """Verify Request.build reproduces each committed request file.
+
+        Mutation: any dropped, reordered or reworded header line in
+            Request.build; a lost trailing newline; the wrong header
+            template selected; a mangled override or typed-identifier
+            layout.
+        Oracle: the committed .req file itself, re-derived from its own
+            header, field and data sections. A baseline of the current
+            build, so it catches a regression, not a defect already
+            present when the file was captured.
+        """
+        want = golden.read_text()
+        fields, identifiers, header = _golden_parts(want)
+
+        with make_tmpdir() as tmpdir:
+            options = BbdlOptions(
+                username=header['username'],
+                usernumber=header['usernumber'],
+                is_bba=bool(header['usernumber']),
+                tempdir=tmpdir)
+            options.begdate = header['begdate']
+            options.enddate = header['enddate']
+            reqfile = Path(tmpdir) / 'rebuilt.req'
+            Request.build(identifiers, fields, reqfile, options)
+            got = reqfile.read_text()
+
+        assert_equal(got, want)
 
 
 class TestComprehensiveFixtures:
