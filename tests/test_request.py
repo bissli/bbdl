@@ -5,10 +5,11 @@ from pathlib import Path
 
 import pytest
 from asserts import assert_equal
+from opendate import Date
 
 from bbdl import BbdlOptions, Request, Result
-from bbdl.request import _parse
-from opendate import Date
+from bbdl.exceptions import BbdlParseError
+from bbdl.request import ERROR_MESSAGE, _parse
 from libb.dir import make_tmpdir
 
 FIXTURES_DIR = Path(__file__).parent / 'fixtures' / 'samples'
@@ -192,6 +193,8 @@ END-OF-FILE
         assert result.data[0]['ID_BB_GLOBAL'] == 'BBG000BLNNH6'
         assert result.data[0]['PX_LAST'] == 145.50
         assert not isinstance(result.data[0]['PX_LAST'], list)
+        assert ('IDENTIFIER', str) in result.columns
+        assert ('PX_LAST', float) in result.columns
 
     def test_parse_historical_response_single_date(self):
         """Should parse historical response and wrap values in lists"""
@@ -271,6 +274,164 @@ END-OF-FILE
         assert len(result.data) == 0
         assert len(result.errors) == 1
         assert result.errors[0]['RETCODE'] == '10'
+
+
+class TestParseMalformedResponse:
+    """Tests for _parse() guards against a malformed or truncated response"""
+
+    def test_truncated_before_end_of_fields(self):
+        """Verify _parse() raises rather than looping at EOF in the field scan.
+
+        Mutation: dropping the `if not raw` guard from the field loop, so
+            readline() returns '' forever and the loop never terminates.
+        Oracle: a body whose END-OF-FIELDS sentinel is absent; the loop
+            either raises or hangs, and pytest.raises distinguishes them.
+        """
+        response = """\
+START-OF-FILE
+PROGRAMNAME=getdata
+START-OF-FIELDS
+PX_LAST
+"""
+        with pytest.raises(BbdlParseError, match='END-OF-FIELDS'):
+            _parse(io.StringIO(response))
+
+    def test_truncated_before_end_of_data(self):
+        """Verify _parse() raises rather than looping at EOF in the data scan.
+
+        Mutation: dropping the `if not raw` guard from the data loop; the
+            field loop completes, so only the second guard is under test.
+        Oracle: a body that closes END-OF-FIELDS but never END-OF-DATA.
+        """
+        response = """\
+START-OF-FILE
+PROGRAMNAME=getdata
+START-OF-FIELDS
+PX_LAST
+END-OF-FIELDS
+START-OF-DATA
+IBM US Equity|0|1|145.50|
+"""
+        with pytest.raises(BbdlParseError, match='END-OF-DATA'):
+            _parse(io.StringIO(response))
+
+    def test_duplicate_start_of_fields(self):
+        """Verify a second START-OF-FIELDS raises instead of restarting.
+
+        Mutation: inverting `if infields` to `if not infields`, which
+            swallows the duplicate and silently discards the first block.
+        Oracle: a body with two START-OF-FIELDS lines.
+        """
+        response = """\
+START-OF-FIELDS
+PX_LAST
+START-OF-FIELDS
+"""
+        with pytest.raises(BbdlParseError, match='already parsing fields'):
+            _parse(io.StringIO(response))
+
+    def test_end_of_data_without_start(self):
+        """Verify a bare END-OF-DATA raises instead of returning empty.
+
+        Mutation: inverting `if not indata` to `if indata`, which turns a
+            response whose data block never opened into a silent success.
+        Oracle: a body that closes the field block, then jumps straight to
+            END-OF-DATA.
+        """
+        response = """\
+START-OF-FIELDS
+PX_LAST
+END-OF-FIELDS
+END-OF-DATA
+"""
+        with pytest.raises(BbdlParseError, match='not parsing data'):
+            _parse(io.StringIO(response))
+
+    def test_end_of_fields_without_start(self):
+        """Verify a bare END-OF-FIELDS raises instead of yielding no fields.
+
+        Mutation: inverting `if not infields` to `if infields`, which lets
+            a response whose field block never opened parse as fieldless.
+        Oracle: a body whose first sentinel is END-OF-FIELDS.
+        """
+        response = """\
+START-OF-FILE
+END-OF-FIELDS
+"""
+        with pytest.raises(BbdlParseError, match='not parsing fields'):
+            _parse(io.StringIO(response))
+
+    def test_duplicate_start_of_data(self):
+        """Verify a second START-OF-DATA raises instead of restarting.
+
+        Mutation: inverting `if indata` to `if not indata`, which swallows
+            the duplicate and silently discards the rows already parsed.
+        Oracle: a body with two START-OF-DATA lines.
+        """
+        response = """\
+START-OF-FIELDS
+PX_LAST
+END-OF-FIELDS
+START-OF-DATA
+START-OF-DATA
+"""
+        with pytest.raises(BbdlParseError, match='already parsing data'):
+            _parse(io.StringIO(response))
+
+
+class TestParseErrorRows:
+    """Tests for _parse()'s non-zero RETCODE and conversion-failure paths"""
+
+    def test_error_row_carries_looked_up_message(self):
+        """Verify an error row's RETMSG comes from ERROR_MESSAGE[RETCODE].
+
+        Mutation: ERROR_MESSAGE.get(flds[2]) in place of flds[1], which
+            looks the message up under NFIELDS instead of the return code;
+            or row.RETMSG = None, which drops the message entirely.
+        Oracle: ERROR_MESSAGE['10'], the module's own mapping, against a
+            row whose RETCODE is 10 and whose NFIELDS is 0.
+        """
+        response = """\
+START-OF-FILE
+PROGRAMNAME=getdata
+START-OF-FIELDS
+PX_LAST
+END-OF-FIELDS
+START-OF-DATA
+INVALID|10|0|
+END-OF-DATA
+END-OF-FILE
+"""
+        result = _parse(io.StringIO(response))
+        assert len(result.errors) == 1
+        assert result.errors[0]['RETMSG'] == ERROR_MESSAGE['10']
+        assert result.errors[0]['IDENTIFIER'] == 'INVALID'
+
+    def test_unconvertible_value_becomes_none(self):
+        """Verify a field that cannot convert lands as None, not as ''.
+
+        Mutation: row[fld] = "" in the conversion handler, which turns a
+            failed numeric conversion into an empty string and breaks any
+            caller testing `is None`; or Field.to_type(None) in the column
+            append, which raises instead of recording the object fallback.
+        Oracle: an unknown mnemonic, for which Field.to_python raises
+            ValueError and Field.to_type returns object.
+        """
+        response = """\
+START-OF-FILE
+PROGRAMNAME=getdata
+START-OF-FIELDS
+NOT_A_REAL_FIELD_XYZ
+END-OF-FIELDS
+START-OF-DATA
+IBM US Equity|0|1|garbage|
+END-OF-DATA
+END-OF-FILE
+"""
+        result = _parse(io.StringIO(response))
+        assert len(result.data) == 1
+        assert result.data[0]['NOT_A_REAL_FIELD_XYZ'] is None
+        assert ('NOT_A_REAL_FIELD_XYZ', object) in result.columns
 
 
 class TestRequestBuild:

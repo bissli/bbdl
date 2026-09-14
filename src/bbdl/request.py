@@ -352,7 +352,10 @@ def _parse(f: io.TextIOBase, use_custom_mappings: bool = True):
     infields = False
     fields = []
     while True:
-        line = f.readline().strip()
+        raw = f.readline()
+        if not raw:
+            raise BbdlParseError('Unexpected EOF before END-OF-FIELDS')
+        line = raw.strip()
         if line == HISTORY_PROGRAM:
             is_history = True
         if line == 'START-OF-FIELDS':
@@ -370,7 +373,10 @@ def _parse(f: io.TextIOBase, use_custom_mappings: bool = True):
 
     indata = False
     while True:
-        line = f.readline().strip()
+        raw = f.readline()
+        if not raw:
+            raise BbdlParseError('Unexpected EOF before END-OF-DATA')
+        line = raw.strip()
         if line == 'START-OF-DATA':
             if indata:
                 raise BbdlParseError('Unexpected START-OF-DATA: already parsing data')
