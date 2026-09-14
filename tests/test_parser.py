@@ -4,9 +4,10 @@ from unittest.mock import patch
 
 import numpy as np
 import pytest
-
-from bbdl.parser import YELLOW_KEYS, Field, Ticker, _is_null, to_date, to_datetime, to_time
 from opendate import Date, DateTime, Time
+
+from bbdl.parser import YELLOW_KEYS, Field, Ticker, _is_null, to_date
+from bbdl.parser import to_datetime, to_time
 
 
 class TestIsNull:
@@ -143,7 +144,7 @@ class TestFieldTypeDispatch:
         ('AMT', 'Real', '3.375', float, 3.375),
         ]
 
-    @pytest.mark.parametrize('mnemonic,ftype,raw,want_type,want_value', CASES,
+    @pytest.mark.parametrize(('mnemonic', 'ftype', 'raw', 'want_type', 'want_value'), CASES,
                              ids=[c[1] for c in CASES])
     def test_each_field_type_converts(self, mnemonic, ftype, raw, want_type, want_value):
         """Verify to_type and to_python agree per Bloomberg field type.
