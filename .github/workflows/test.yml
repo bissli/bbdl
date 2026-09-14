@@ -1,0 +1,37 @@
+name: test
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  suite:
+    name: test suite
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install poetry
+        run: pipx install poetry
+      - name: Install with test extras
+        run: poetry install -E test
+      - name: Run the suite
+        run: poetry run pytest
+
+  collect-without-extras:
+    name: collection without test extras
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install poetry
+        run: pipx install poetry
+      - name: Install runtime dependencies only
+        run: poetry install
+      - name: Collection must still succeed
+        run: poetry run python -m pytest --collect-only
