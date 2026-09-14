@@ -1,14 +1,11 @@
-import os
-from collections import deque
-from io import IOBase
+"""Realistic Bloomberg field and identifier lists for request tests.
 
-import config
-import pytest
-import wrapt
+Captured from a live bbdl request covering bonds, equity, governments
+and futures. Kept whole so a chunking or identifier-dispatch test runs
+against the field mix a real caller sends.
+"""
 
-import bbdl
-
-fields = [
+REQUEST_FIELDS = [
     'ID_BB_UNIQUE',
     'ID_BB_GLOBAL',
     'PARSEKYABLE_DES',
@@ -112,95 +109,10 @@ fields = [
     'YAS_RISK',
 ]
 
-theids = [
+REQUEST_IDENTIFIERS = [
     'CDX IG CDSI GEN 5Y Corp',
     'AAPL US Equity',
     'BBG012HQMQH8 Corp',  # COIN 3 3/8 10/01/28
     '91282CKY Govt',  # T 4 5/8 6/30/26
     'TUU4 Comdty',
 ]
-
-
-def as_posix(path):
-    if not path:
-        return path
-    return str(path).replace(os.sep, '/')
-
-
-class MockFTPConnection:
-    """Mock FTP lib for testing
-    """
-    def __init__(self):
-        self._files: list = None
-        self._size: float = 0
-        self._dirlist: list = []
-        self._exists: bool = True
-        self._stack = deque()
-        self._contents: str = ''
-
-    def _set_files(self, files):
-        self._files = files
-
-    def _set_dirlist(self, dirlist):
-        self._dirlist = dirlist
-
-    def _set_exists(self, exists):
-        self._exists = exists
-
-    def _set_contents(self, contents):
-        self._contents = contents
-
-    def pwd(self):
-        return '/'.join(self._stack)
-
-    def cd(self, path: str):
-        path = as_posix(path)
-        if not self._exists:
-            self._exists = True
-            raise Exception("Doesn't exist")
-        for dir_ in path.split('/'):
-            if dir_ == '..':
-                self._stack.pop()
-            else:
-                self._stack.append(dir_)
-
-    def dir(self, callback):
-        for dir_ in self._dirlist:
-            callback(dir_)
-
-    def files(self):
-        return self._files
-
-    def getascii(self, remotefile, localfile, callback):
-        callback(self._contents)
-
-    getbinary = getascii
-
-    def putascii(self, f: IOBase, *_):
-        pass
-
-    putbinary = putascii
-
-    def delete(self, remotefile):
-        if not self._exists:
-            raise Exception("Doesn't exist")
-        return True
-
-    def close(self):
-        return True
-
-
-@wrapt.patch_function_wrapper('ftp', 'connect')
-def patch_connection(wrapped, instance, args, kwargs):
-    """Return our Mocker"""
-    return MockFTPConnection()
-
-
-@pytest.mark.skip(reason='Mock does not return response files; needs proper setup')
-def test_starter():
-    with bbdl.SFTPClient('bbg.mock.ftp', config) as sftp:
-        result = sftp.request(theids, fields)
-
-
-if __name__ == '__main__':
-    pytest.main([__file__])

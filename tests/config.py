@@ -21,6 +21,7 @@ bbg.mock.ftp.password = 'bar'
 bbg.mock.ftp.port = 21
 bbg.mock.ftp.usernumber = '1234567'
 bbg.mock.ftp.sn = '890'
+bbg.mock.ftp.ws = '1'
 bbg.mock.ftp.programflag = 'adhoc'
 
 Setting.lock()
