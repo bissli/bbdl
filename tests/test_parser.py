@@ -364,6 +364,143 @@ class TestDateTimeConverters:
             to_time('not-a-time')
 
 
+class TestFieldCategories:
+    """Test the category filters, whose only checks were uncollected doctests."""
+
+    def test_from_categories_returns_exactly_that_category(self):
+        """Verify from_categories selects a category's members and no others.
+
+        Mutation: the filterfn predicate reversed, which returns every
+            field outside the category instead of inside it.
+        Oracle: hand-enumerated - 'BCurve' holds exactly one mnemonic
+            and 'ATM Volatility' exactly two, per the embedded metadata.
+        """
+        assert list(Field.from_categories(['BCurve'])) == [
+            'INTEREST_RATE_CURVE_ANALYTICS']
+        assert list(Field.from_categories(['ATM Volatility'])) == [
+            'BVOL_ATM_SWAPTION_VOL', 'BVOL_RFR_SWAPTION_ATM']
+
+    def test_from_categories_accepts_several_categories(self):
+        """Verify the membership test is `in`, so a list unions its members.
+
+        Mutation: comparing equality against the whole list rather than
+            membership in it, which returns nothing for any multi-entry
+            request.
+        Oracle: the union of two hand-enumerated single-member results.
+        """
+        both = set(Field.from_categories(['BCurve', 'ATM Volatility']))
+
+        assert both == {'INTEREST_RATE_CURVE_ANALYTICS',
+                        'BVOL_ATM_SWAPTION_VOL', 'BVOL_RFR_SWAPTION_ATM'}
+
+    def test_from_categories_invert_excludes_the_category(self):
+        """Verify invert=True returns the complement.
+
+        Mutation: ignoring the invert flag, which silently returns the
+            category itself and would send an expensive field set to
+            Bloomberg instead of excluding it.
+        Oracle: the one BCurve mnemonic absent from the inverted result,
+            and the two counts summing to the same total either way.
+        """
+        inside = Field.from_categories(['BCurve'])
+        outside = Field.from_categories(['BCurve'], invert=True)
+
+        assert 'INTEREST_RATE_CURVE_ANALYTICS' not in outside
+        assert len(inside) + len(outside) == len(Field.from_categories([], invert=True))
+
+    def test_from_categories_drops_bh_and_lu_prefixes(self):
+        """Verify BH_ and LU_ metadata mnemonics are excluded throughout.
+
+        Mutation: dropping the prefix exclusion, which admits 1073
+            Bloomberg-internal mnemonics into every category result.
+        Oracle: no member of the full complement starts with either
+            prefix, though all_fields holds 1073 that do.
+        """
+        every = Field.from_categories([], invert=True)
+
+        assert sum(1 for m in Field.all_fields if m[:3] in {'BH_', 'LU_'}) == 1073
+        assert not [m for m in every if m[:3] in {'BH_', 'LU_'}]
+
+    def test_from_categories_with_no_categories_is_empty(self):
+        """Verify an empty category list selects nothing.
+
+        Mutation: the invert default flipped to True, which turns a
+            no-op call into a request for every field Bloomberg offers.
+        Oracle: the empty list.
+        """
+        assert list(Field.from_categories([])) == []
+
+    def test_to_categories_counts_and_details(self):
+        """Verify to_categories groups mnemonics under their own category.
+
+        Mutation: the count incremented by something other than one, or
+            the detail list overwritten rather than appended, either of
+            which misreports what a request would cost.
+        Oracle: hand-picked mnemonics whose categories are asserted from
+            the metadata, with counts computed by hand.
+        """
+        got = Field.to_categories(['ID_BB_UNIQUE', 'PX_ASK', 'PX_BID'])
+
+        assert got.count == {'Open Source': 1, 'Pricing - Intraday': 2}
+        assert got.detail == {'Open Source': ['ID_BB_UNIQUE'],
+                              'Pricing - Intraday': ['PX_ASK', 'PX_BID']}
+
+    def test_to_categories_skips_unknown_mnemonics(self):
+        """Verify a mnemonic absent from the metadata is not counted.
+
+        Mutation: dropping the `if not category: continue` guard, which
+            files unknown fields under an empty-string category and
+            inflates the cost estimate.
+        Oracle: one known and one unknown mnemonic; only the known one
+            appears.
+        """
+        got = Field.to_categories(['PX_ASK', 'NOT_A_FIELD_XYZ'])
+
+        assert got.count == {'Pricing - Intraday': 1}
+
+    def test_open_fields_unions_the_two_free_categories(self):
+        """Verify open_fields is Open Source plus User Entered Info.
+
+        Mutation: either category dropped from the union, which would
+            make limit_fields_to_categories silently discard free
+            fields a caller asked for.
+        Oracle: the two categories' own counts, summed, and a known
+            member of each.
+        """
+        detail = Field.to_categories(Field.all_fields).detail
+        expected = len(detail['Open Source']) + len(detail['User Entered Info.'])
+
+        assert len(Field.open_fields) == expected
+        assert 'PARSEKYABLE_DES' in Field.open_fields
+
+    def test_limit_fields_upcases_and_filters(self):
+        """Verify the filter upcases requests and keeps only allowed fields.
+
+        Mutation: dropping the .upper() on the request field, so a
+            lower-case mnemonic silently vanishes from the request; or
+            dropping the open_fields union, which discards free fields.
+        Oracle: hand-written - a lower-case in-category field, an open
+            field outside the category, and an unknown field, sorted.
+        """
+        got = Field.limit_fields_to_categories(
+            ['px_last', 'ID_BB_UNIQUE', 'NOT_A_FIELD_XYZ'],
+            ['Pricing - Intraday'])
+
+        assert got == ['ID_BB_UNIQUE', 'PX_LAST']
+
+    def test_limit_fields_with_no_categories_keeps_only_open_fields(self):
+        """Verify an empty category list still admits the free fields.
+
+        Mutation: replacing the union with the category result alone,
+            which returns nothing and makes an open-field-only request
+            impossible.
+        Oracle: an open field kept and a charged field dropped.
+        """
+        got = Field.limit_fields_to_categories(['ID_BB_UNIQUE', 'PX_LAST'], [])
+
+        assert got == ['ID_BB_UNIQUE']
+
+
 class TestFieldToNumber:
     """Test Field._to_number method."""
 
