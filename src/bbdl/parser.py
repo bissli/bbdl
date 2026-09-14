@@ -269,13 +269,18 @@ class Field:
     def open_fields() -> OrderedSet:
         """Open fields do not incur a charge.
 
-        >>> gratis = Field.open_fields()
-        >>> type(gratis)
-        <class ...OrderedSet'>
-        >>> len(gratis)
-        1240
-        >>> 'PARSEKYABLE_DES' in gratis
-        True
+        Returns
+        -------
+        OrderedSet
+            Every mnemonic in the 'Open Source' and 'User Entered Info.'
+            categories, which Bloomberg bills at no cost.
+
+        Notes
+        -----
+        - A cachedstaticproperty, so this is read as Field.open_fields,
+          never called.
+        - The membership, not the count, is the contract: the count moves
+          whenever the embedded field table is regenerated.
         """
         all_categories = Field.to_categories(Field.all_fields).detail
         return OrderedSet(
