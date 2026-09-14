@@ -15,19 +15,21 @@ libb-log = { git = "https://github.com/bissli/libb-log", optional = true }
 
 pytest = { version = "*", optional = true }
 asserts = { version = "*", optional = true }
-docker = { version = "*", optional = true }
-pytest-mock = { version = "*", optional = true }
-wrapt = { version = '*', optional = true }
+coverage = { version = "*", optional = true }
+mutmut = { version = "*", optional = true }
 
 [tool.poetry.extras]
 test = [
   "pytest",
   "asserts",
-  "libb-log",
-  "docker",
-  "pytest-mock",
-  "wrapt",
+  "coverage",
+  "mutmut",
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+filterwarnings = ["error"]
 
 [build-system]
 requires = ["poetry-core"]
