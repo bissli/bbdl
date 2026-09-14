@@ -1,10 +1,12 @@
 """Unit tests for bbdl.parser module."""
 
+from unittest.mock import patch
+
 import numpy as np
 import pytest
 
 from bbdl.parser import Field, Ticker, _is_null, to_date, to_datetime, to_time
-from opendate import Date
+from opendate import Date, DateTime, Time
 
 
 class TestIsNull:
@@ -116,6 +118,250 @@ class TestFieldToPython:
     def test_unknown_field(self):
         with pytest.raises(ValueError, match='Unknown field'):
             Field.to_python('UNKNOWN_FIELD_XYZ', 'value')
+
+
+class TestFieldTypeDispatch:
+    """Test Field.to_type/to_python across every Bloomberg field type."""
+
+    # (mnemonic, field type, raw value, expected to_type, expected to_python)
+    CASES = [
+        ('FIXED', 'Boolean', 'Y', bool, True),
+        ('MTG_OID', 'Bulk Format', ';1;1;5;01/01/2025;', list, [Date(2025, 1, 1)]),
+        ('NAME', 'Character', '  IBM  ', str, 'IBM'),
+        ('END_DT', 'Date', '12/1/24', Date, Date(2024, 12, 1)),
+        ('BC_YEAR', 'Integer', '2024', int, 2024),
+        ('MLI_OAS', 'Integer/Real', '12.5', float, 12.5),
+        ('CLASS', 'Long Character', ' x ', str, 'x'),
+        ('FUT_MONTH_YR', 'Month/Year', '12/24', Date, Date(2024, 12, 1)),
+        ('ASK', 'Price', '145.50', float, 145.5),
+        ('AMT', 'Real', '3.375', float, 3.375),
+        ]
+
+    @pytest.mark.parametrize('mnemonic,ftype,raw,want_type,want_value', CASES,
+                             ids=[c[1] for c in CASES])
+    def test_each_field_type_converts(self, mnemonic, ftype, raw, want_type, want_value):
+        """Verify to_type and to_python agree per Bloomberg field type.
+
+        Mutation: any arm of either if-chain reassigned to the wrong
+            converter, or a comparison inverted - `if ftype != 'Real'`
+            makes every arm below it return float, so a Time field
+            arrives as a number.
+        Oracle: the mnemonic's own Field Type metadata, asserted, plus a
+            hand-computed expected value per row.
+        """
+        assert Field.all_fields[mnemonic]['Field Type'] == ftype
+        assert Field.to_type(mnemonic) == want_type
+        assert Field.to_python(mnemonic, raw) == want_value
+
+    def test_date_or_time_field(self):
+        """Verify a 'Date or Time' mnemonic converts to DateTime.
+
+        Mutation: the 'Date or Time' arm routed to to_date, which drops
+            the time of day silently.
+        Oracle: hand-computed 2024-12-31 14:30, compared component-wise
+            so the parser's tzinfo does not mask a dropped time.
+        """
+        assert Field.all_fields['LAST_UPDATE']['Field Type'] == 'Date or Time'
+        assert Field.to_type('LAST_UPDATE') is DateTime
+
+        got = Field.to_python('LAST_UPDATE', '12/31/2024 14:30:00')
+        assert isinstance(got, DateTime)
+        assert (got.year, got.month, got.day) == (2024, 12, 31)
+        assert (got.hour, got.minute) == (14, 30)
+
+    def test_time_field(self):
+        """Verify a 'Time' mnemonic converts to Time, not to a number.
+
+        Mutation: `if ftype == 'Real'` inverted to `!=`, which catches
+            'Time' first and returns 16.0 instead of Time(16, 0).
+        Oracle: hand-computed 16:00:00, compared component-wise.
+        """
+        assert Field.all_fields['LOCAL_TIME']['Field Type'] == 'Time'
+        assert Field.to_type('LOCAL_TIME') is Time
+
+        got = Field.to_python('LOCAL_TIME', '16:00:00')
+        assert isinstance(got, Time)
+        assert (got.hour, got.minute, got.second) == (16, 0, 0)
+
+    def test_unknown_field_type_raises(self):
+        """Verify a mnemonic whose metadata type is unknown raises.
+
+        Mutation: deleting the trailing `raise ValueError`, which returns
+            None for an unrecognized type and hides a stale field table.
+        Oracle: a patched metadata row carrying a type no arm handles.
+        """
+        rogue = dict(Field.all_fields['ASK'], **{'Field Type': 'Quaternion'})
+        with patch.dict(Field.all_fields, {'ROGUE_FIELD': rogue}):
+            with pytest.raises(ValueError, match='Unknown type'):
+                Field.to_type('ROGUE_FIELD')
+            with pytest.raises(ValueError, match='Unknown type'):
+                Field.to_python('ROGUE_FIELD', '1')
+
+
+class TestConvertBulkField:
+    """Test Field._convert_bulk_field across every bulk type code."""
+
+    def test_string_codes(self):
+        """Verify codes 1, 4 and 11 strip and return the raw string.
+
+        Mutation: any of the three dropped from the set literal, which
+            sends it to the trailing raise; or routed to _to_number,
+            which returns None for text.
+        Oracle: hand-written ' abc ' -> 'abc' per code.
+        """
+        for code in (1, 4, 11):
+            assert Field._convert_bulk_field(code, ' abc ') == 'abc'
+
+    def test_number_codes(self):
+        """Verify codes 2, 3, 12 and 13 parse as numbers.
+
+        Mutation: any code dropped from a set literal or routed to
+            _to_str, which returns '12.5' instead of 12.5.
+        Oracle: hand-written '12.5' -> 12.5 per code, type asserted so a
+            string does not compare equal by coercion.
+        """
+        for code in (2, 3, 12, 13):
+            got = Field._convert_bulk_field(code, '12.5')
+            assert got == 12.5
+            assert isinstance(got, float)
+
+    def test_date_code(self):
+        """Verify code 5 parses a US-format date.
+
+        Mutation: code 5 routed to to_datetime or to_time.
+        Oracle: hand-computed 01/02/2025 -> Date(2025, 1, 2), which also
+            pins month-before-day.
+        """
+        assert Field._convert_bulk_field(5, '01/02/2025') == Date(2025, 1, 2)
+
+    def test_time_code(self):
+        """Verify code 6 parses a time of day.
+
+        Mutation: code 6 routed to to_date, which raises and yields None
+            through the caller's except.
+        Oracle: hand-computed 16:00:00, compared component-wise.
+        """
+        got = Field._convert_bulk_field(6, '16:00:00')
+        assert isinstance(got, Time)
+        assert (got.hour, got.minute, got.second) == (16, 0, 0)
+
+    def test_datetime_code(self):
+        """Verify code 7 parses a date and a time together.
+
+        Mutation: code 7 routed to to_date, which silently drops the
+            time of day.
+        Oracle: hand-computed 2024-12-31 14:30, compared component-wise.
+        """
+        got = Field._convert_bulk_field(7, '12/31/2024 14:30:00')
+        assert isinstance(got, DateTime)
+        assert (got.year, got.month, got.day) == (2024, 12, 31)
+        assert (got.hour, got.minute) == (14, 30)
+
+    def test_month_year_code(self):
+        """Verify code 9 parses month/year to the first of that month.
+
+        Mutation: the fmt string changed from '%m/%y' to '%M/%Y', which
+            reads 12 as a minute and raises; or code 9 routed to to_date,
+            which misreads '12/24' as a day.
+        Oracle: hand-computed '12/24' -> Date(2024, 12, 1).
+        """
+        assert Field._convert_bulk_field(9, '12/24') == Date(2024, 12, 1)
+
+    def test_boolean_code(self):
+        """Verify code 10 parses a Bloomberg boolean.
+
+        Mutation: code 10 routed to _to_str, which returns 'Y' - truthy,
+            so a caller testing `is True` breaks while `if value` does
+            not.
+        Oracle: 'Y' -> True and 'N' -> False, identity-compared.
+        """
+        assert Field._convert_bulk_field(10, 'Y') is True
+        assert Field._convert_bulk_field(10, 'N') is False
+
+    def test_unknown_code_raises(self):
+        """Verify an unrecognized bulk type code raises.
+
+        Mutation: deleting the trailing raise, which returns None for an
+            unknown code and turns a protocol change into missing data.
+        Oracle: code 99, outside the documented 1..13 range.
+        """
+        with pytest.raises(ValueError, match='Unexpected field type'):
+            Field._convert_bulk_field(99, 'x')
+
+
+class TestDateTimeConverters:
+    """Test to_date/to_datetime/to_time beyond their null cases."""
+
+    def test_to_date_parses_and_raises(self):
+        """Verify to_date parses a real date and rejects garbage.
+
+        Mutation: raise_err=True flipped to False, which turns an
+            unparseable Bloomberg value into a silent None so a missing
+            date is indistinguishable from a malformed one.
+        Oracle: hand-computed Date(2024, 12, 1), and pytest.raises on a
+            value no format matches.
+        """
+        assert to_date('12/1/24') == Date(2024, 12, 1)
+        with pytest.raises(Exception):
+            to_date('not-a-date')
+
+    def test_to_date_honors_an_explicit_format(self):
+        """Verify the fmt argument drives strptime rather than being ignored.
+
+        Mutation: dropping the `if fmt` branch, which sends '12/24' to
+            Date.parse and reads it as a day-month pair.
+        Oracle: hand-computed '12/24' under '%m/%y' -> Date(2024, 12, 1).
+        """
+        assert to_date('12/24', fmt='%m/%y') == Date(2024, 12, 1)
+
+    def test_to_datetime_parses_and_raises(self):
+        """Verify to_datetime keeps the time of day and rejects garbage.
+
+        Mutation: raise_err=True flipped to False; or DateTime.parse
+            swapped for Date.parse, which drops the time.
+        Oracle: hand-computed 2024-12-31 14:30, component-wise.
+        """
+        got = to_datetime('12/31/2024 14:30:00')
+        assert (got.year, got.month, got.day) == (2024, 12, 31)
+        assert (got.hour, got.minute) == (14, 30)
+        with pytest.raises(Exception):
+            to_datetime('not-a-datetime')
+
+    def test_to_datetime_honors_an_explicit_format(self):
+        """Verify the fmt argument drives strptime for to_datetime.
+
+        Mutation: dropping the `if fmt` branch, which sends the value to
+            DateTime.parse and misreads a day-first date as month-first;
+            or swapping strptime's two arguments.
+        Oracle: hand-computed 31-12-2024 14:30 under '%d-%m-%Y %H:%M',
+            a day-first spelling DateTime.parse would read as month 31.
+        """
+        got = to_datetime('31-12-2024 14:30', fmt='%d-%m-%Y %H:%M')
+        assert (got.year, got.month, got.day) == (2024, 12, 31)
+        assert (got.hour, got.minute) == (14, 30)
+
+    def test_to_time_honors_an_explicit_format(self):
+        """Verify the fmt argument reaches Time.parse.
+
+        Mutation: fmt=None passed through, or the fmt keyword dropped
+            from the call, either of which fails to parse a 12-hour
+            clock value and raises instead of returning 16:30.
+        Oracle: hand-computed '04.30 PM' under '%I.%M %p' -> 16:30.
+        """
+        got = to_time('04.30 PM', fmt='%I.%M %p')
+        assert (got.hour, got.minute) == (16, 30)
+
+    def test_to_time_parses_and_raises(self):
+        """Verify to_time parses a time of day and rejects garbage.
+
+        Mutation: raise_err=True flipped to False, which hides a
+            malformed time as a missing one.
+        Oracle: hand-computed 16:00:00, component-wise.
+        """
+        got = to_time('16:00:00')
+        assert (got.hour, got.minute, got.second) == (16, 0, 0)
+        with pytest.raises(Exception):
+            to_time('not-a-time')
 
 
 class TestFieldToNumber:
