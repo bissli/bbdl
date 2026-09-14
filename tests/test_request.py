@@ -1692,32 +1692,6 @@ class TestFetchByDateIntegration:
         rundate = _parse_rundate(filepath)
         assert rundate == Date(2026, 1, 5)
 
-    def test_fetch_by_date_merges_multiple_files(self):
-        """When multiple files match target date, results are merged."""
-        # Create two result objects simulating two downloaded files
-        result1 = Result()
-        result1.data = [
-            {'IDENTIFIER': 'AAPL US Equity', 'PX_LAST': 271.01},
-            {'IDENTIFIER': 'IBM US Equity', 'PX_LAST': 291.50},
-        ]
-        result1.columns = [('IDENTIFIER', str), ('PX_LAST', float)]
-
-        result2 = Result()
-        result2.data = [
-            {'IDENTIFIER': 'AAPL US Equity', 'EBITDA': 146848.00},
-            {'IDENTIFIER': 'IBM US Equity', 'EBITDA': 18238.00},
-        ]
-        result2.columns = [('IDENTIFIER', str), ('EBITDA', float)]
-
-        # Merge simulates what _fetch_by_date does
-        result1.merge(result2)
-
-        # Verify merged result
-        assert len(result1.data) == 2
-        aapl = _find(result1.data, 'AAPL')
-        assert aapl['PX_LAST'] == 271.01
-        assert aapl['EBITDA'] == 146848.00
-
     def test_multiple_fixture_files_can_be_merged(self):
         """Real fixture files can be merged by identifier."""
         # Parse multiple fixture files (simulating files from same date)
@@ -1740,26 +1714,8 @@ class TestFetchByDateIntegration:
         assert aapl['EBITDA_Q'] == 35554.00  # Quarterly
 
 
-class TestFieldChunkingOver500:
-    """Tests for chunking when fields exceed 500 limit."""
-
-    def test_fields_chunked_at_500(self):
-        """Fields are split into chunks of 500 for request building."""
-        # Generate 600 field names
-        fields = [f'FIELD_{i:03d}' for i in range(600)]
-
-        nparts = (len(fields) - 1) // 500 + 1
-        assert nparts == 2
-
-        chunk1 = fields[0:500]
-        chunk2 = fields[500:600]
-
-        assert len(chunk1) == 500
-        assert len(chunk2) == 100
-        assert chunk1[0] == 'FIELD_000'
-        assert chunk1[-1] == 'FIELD_499'
-        assert chunk2[0] == 'FIELD_500'
-        assert chunk2[-1] == 'FIELD_599'
+class TestChunkedResultMerge:
+    """Tests for merging Results that came from separate field chunks."""
 
     def test_chunked_results_merged_correctly(self):
         """Results from chunked requests merge by identifier."""
