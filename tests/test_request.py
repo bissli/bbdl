@@ -510,6 +510,264 @@ END-OF-FILE
             assert_equal(resp, expected)
 
 
+class TestRequestBuildHeaders:
+    """Tests for Request.build()'s header branches, per hand-written oracles."""
+
+    @staticmethod
+    def _build(identifiers, fields, **kwargs):
+        """Build into a temp dir and return the file text."""
+        with make_tmpdir() as tmpdir:
+            options = BbdlOptions(tempdir=tmpdir, **kwargs)
+            reqfile = Path(tmpdir) / 'r.req'
+            Request.build(identifiers, fields, reqfile, options)
+            return reqfile.read_text()
+
+    def test_bba_terminal_writes_usernumber_only(self):
+        """Verify a BBA link emits USERNUMBER and never SN or WS.
+
+        Mutation: `options.usernumber and options.is_bba` flipped to `or`,
+            which sends SN and WS to a BBA terminal - the harm
+            options.py's terminal_bba docstring names.
+        Oracle: the hand-written header block for a BBA request; SN and
+            WS must be absent from the whole file.
+        """
+        got = self._build(['IBM US Equity'], ['PX_LAST'],
+                          username='dl00001', usernumber='999', is_bba=True)
+
+        assert 'USERNUMBER=999\n' in got
+        assert 'SN=' not in got
+        assert 'WS=' not in got
+
+    def test_open_terminal_writes_sn_and_ws(self):
+        """Verify a non-BBA link emits USERNUMBER, SN and WS together.
+
+        Mutation: dropping the elif arm, or routing an open terminal to
+            TERMINAL_HEADER_BBA, either of which silently unlinks the
+            request from the terminal.
+        Oracle: the hand-written three-line terminal block.
+        """
+        got = self._build(['IBM US Equity'], ['PX_LAST'],
+                          username='dl00001', usernumber='999',
+                          sn='123', ws='456')
+
+        assert 'USERNUMBER=999\nSN=123\nWS=456\n' in got
+
+    def test_compressed_writes_compress_flag_once(self):
+        """Verify compressed=True emits COMPRESS=yes exactly once.
+
+        Mutation: `COMPRESS_FLAG not in headers` inverted to `in`, which
+            drops the flag while Request.send still polls for a .gz name,
+            so the request times out.
+        Oracle: a single occurrence, counted.
+        """
+        got = self._build(['IBM US Equity'], ['PX_LAST'],
+                          username='dl00001', compressed=True)
+
+        assert got.count('COMPRESS=yes') == 1
+        assert 'COMPRESS=yes\n' in got
+
+    def test_compressed_not_duplicated_when_caller_supplies_it(self):
+        """Verify a caller-supplied COMPRESS=yes is not written twice.
+
+        Mutation: dropping the `COMPRESS_FLAG not in headers` guard,
+            which emits the flag a second time.
+        Oracle: still exactly one occurrence with the flag passed in
+            headers.
+        """
+        got = self._build(['IBM US Equity'], ['PX_LAST'],
+                          username='dl00001', compressed=True,
+                          headers=['COMPRESS=yes'])
+
+        assert got.count('COMPRESS=yes') == 1
+
+    def test_caller_headers_are_written(self):
+        """Verify an extra header reaches the file ahead of the generated block.
+
+        Mutation: `[] if not options.headers else options.headers[:]`
+            inverted, which discards every caller header.
+        Oracle: the supplied line present, and ordered before the
+            generated SECMASTER line.
+        """
+        got = self._build(['IBM US Equity'], ['PX_LAST'],
+                          username='dl00001', headers=['SECMASTER=no'])
+
+        assert 'SECMASTER=no\n' in got
+        assert got.index('SECMASTER=no') < got.index('CLOSINGVALUES=yes')
+
+    def test_bval_uses_the_bval_template(self):
+        """Verify bval=True swaps in the BVAL header template.
+
+        Mutation: dropping the `if options.bval` branch, which sends a
+            BVAL request without PRICING_SOURCE and prices it off the
+            wrong source.
+        Oracle: the BVAL template's own lines present and the standard
+            template's PROGRAMFLAG line absent.
+        """
+        got = self._build(['IBM US Equity'], ['PX_LAST'],
+                          username='dl00001', bval=True)
+
+        assert 'PRICING_SOURCE=BVAL:NY4PM\n' in got
+        assert 'PROGRAMNAME=getdata\n' in got
+        assert 'PROGRAMFLAG=' not in got
+
+    def test_non_historical_writes_the_current_data_block(self):
+        """Verify no date range emits SECMASTER/CLOSINGVALUES/DERIVED.
+
+        Mutation: `options.begdate or options.enddate` flipped to `and`,
+            which routes a begdate-only request down the current-data
+            branch and silently drops the date range.
+        Oracle: the hand-written three-line block, and no DATERANGE.
+        """
+        got = self._build(['IBM US Equity'], ['PX_LAST'], username='dl00001')
+
+        assert 'SECMASTER=yes\nCLOSINGVALUES=yes\nDERIVED=yes\n' in got
+        assert 'DATERANGE' not in got
+
+    def test_begdate_only_spans_a_single_day(self):
+        """Verify begdate with no enddate yields DATERANGE=beg|beg.
+
+        Mutation: `options.begdate or options.enddate` flipped to `and`,
+            which skips the history block entirely; or dropping the
+            enddate fallback, which formats None into the range.
+        Oracle: hand-computed DATERANGE=20240102|20240102.
+        """
+        got = self._build(['IBM US Equity'], ['PX_LAST'],
+                          username='dl00001', begdate='20240102')
+
+        assert 'PROGRAMNAME=gethistory\n' in got
+        assert 'DATERANGE=20240102|20240102\n' in got
+
+    def test_enddate_only_spans_a_single_day(self):
+        """Verify enddate with no begdate yields DATERANGE=end|end.
+
+        Mutation: dropping the begdate fallback, which formats None into
+            the range and raises TypeError.
+        Oracle: hand-computed DATERANGE=20241231|20241231.
+        """
+        got = self._build(['IBM US Equity'], ['PX_LAST'],
+                          username='dl00001', enddate='20241231')
+
+        assert 'DATERANGE=20241231|20241231\n' in got
+
+    def test_build_does_not_mutate_the_caller_options(self):
+        """Verify build() leaves the options object it was handed alone.
+
+        Mutation: `options.enddate = options.begdate` in place of the
+            local, which leaks a single-day range into the caller's
+            object and makes a later reuse of those options silently
+            historical.
+        Oracle: enddate is None before and after the call.
+        """
+        with make_tmpdir() as tmpdir:
+            options = BbdlOptions(username='dl00001', begdate='20240102',
+                                  tempdir=tmpdir)
+            assert options.enddate is None
+            Request.build(['IBM US Equity'], ['PX_LAST'],
+                          Path(tmpdir) / 'r.req', options)
+
+            assert options.enddate is None
+
+
+class TestRequestBuildIdentifiers:
+    """Tests for Request.build()'s identifier dispatch."""
+
+    @staticmethod
+    def _data_block(identifiers):
+        """Build with one field and return the START-OF-DATA lines."""
+        with make_tmpdir() as tmpdir:
+            options = BbdlOptions(username='dl00001', tempdir=tmpdir)
+            reqfile = Path(tmpdir) / 'r.req'
+            Request.build(identifiers, ['PX_LAST'], reqfile, options)
+            body = reqfile.read_text()
+        start = body.index('START-OF-DATA\n') + len('START-OF-DATA\n')
+        return body[start:body.index('END-OF-DATA')].splitlines()
+
+    def test_bare_ticker_passes_through(self):
+        """Verify an already-cased ticker is written unchanged.
+
+        Mutation: iden.split(' ')[-2] in place of [-1], which recases the
+            wrong word; or iden[1] in place of iden[0] for a one-tuple.
+        Oracle: the input string, byte for byte.
+        """
+        assert self._data_block(['IBM US Equity']) == ['IBM US Equity']
+
+    def test_lowercase_yellow_key_is_recased(self):
+        """Verify a lower-case yellow key is corrected before upload.
+
+        Mutation: `if capkey in YELLOW_KEYS` inverted, or capkey = None,
+            either of which ships a miscased key that Bloomberg matches
+            case-sensitively.
+        Oracle: hand-written expected output per key; the ticker body is
+            left alone and only the trailing key changes.
+        """
+        assert self._data_block(['IBM US equity']) == ['IBM US Equity']
+        assert self._data_block(['88160RAG6 corp']) == ['88160RAG6 Corp']
+
+    def test_one_element_sequence_is_unwrapped(self):
+        """Verify a single-element tuple is treated as a bare ticker.
+
+        Mutation: `len(iden) == 1` changed to == 2, which routes a
+            one-tuple into the value|type branch and emits a stray pipe.
+        Oracle: the hand-written single line with no delimiter.
+        """
+        assert self._data_block([('IBM US Equity',)]) == ['IBM US Equity']
+
+    def test_none_type_is_treated_as_a_bare_ticker(self):
+        """Verify a (value, None) pair drops the empty type.
+
+        Mutation: iden[-2] in place of iden[-1], or `and` for the final
+            `or`, either of which emits 'IBM US Equity|None'.
+        Oracle: the hand-written single line.
+        """
+        assert self._data_block([('IBM US Equity', None)]) == ['IBM US Equity']
+
+    def test_value_and_type_pair(self):
+        """Verify a (value, type) pair is written value|type.
+
+        Mutation: `len(iden) == 2` changed to == 3, which drops every
+            CUSIP or ISIN request into the trailing ValueError.
+        Oracle: the hand-written '88160RAG6|CUSIP' line.
+        """
+        assert self._data_block([('88160RAG6', 'CUSIP')]) == ['88160RAG6|CUSIP']
+
+    def test_override_pairs_carry_a_count(self):
+        """Verify an override identifier writes value|type|N|pairs.
+
+        Mutation: iden[:3] in place of iden[:2], which repeats the first
+            override field as the type; or the count arithmetic, which
+            tells Bloomberg the wrong number of overrides.
+        Oracle: hand-computed - two field/value pairs give the count 2,
+            four give 4.
+        """
+        assert self._data_block([('IBM US Equity', '', 'FUND_PER', 'Q')]) == [
+            'IBM US Equity||1|FUND_PER|Q']
+        assert self._data_block(
+            [('IBM US Equity', '', 'FUND_PER', 'Q', 'EQY_FUND_YEAR', '2024')]) == [
+            'IBM US Equity||2|FUND_PER|Q|EQY_FUND_YEAR|2024']
+
+    def test_odd_length_override_raises(self):
+        """Verify an unpaired override list is rejected, not truncated.
+
+        Mutation: `len(iden) > 3 and len(iden) % 2 == 0` loosened to
+            `or`, which accepts an unpaired list and writes a request
+            Bloomberg answers with error 997.
+        Oracle: a 5-element identifier, which is neither a pair nor an
+            even-length override list.
+        """
+        with pytest.raises(ValueError, match='Unexpected idtype format'):
+            self._data_block([('X', 'CUSIP', 'A', 'B', 'C')])
+
+    def test_three_element_identifier_raises(self):
+        """Verify a 3-element identifier is rejected.
+
+        Mutation: `len(iden) > 3` relaxed to `>= 3`, which would write a
+            3-tuple as an override with a half pair.
+        Oracle: a 3-element identifier, one past the value|type form.
+        """
+        with pytest.raises(ValueError, match='Unexpected idtype format'):
+            self._data_block([('X', 'CUSIP', 'A')])
+
+
 class TestRequestBuildGoldens:
     """Characterization pin: every committed .req rebuilds byte-for-byte."""
 

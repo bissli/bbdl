@@ -208,12 +208,12 @@ class Request:
         headers = [] if not options.headers else options.headers[:]
 
         if options.begdate or options.enddate:
-            if not options.enddate:
-                options.enddate = options.begdate
+            begdate = options.begdate or options.enddate
+            enddate = options.enddate or options.begdate
             headers.extend([
                     HISTORY_PROGRAM,
                     'HIST_FORMAT=horizontal',
-                    f'DATERANGE={options.begdate:%Y%m%d}|{options.enddate:%Y%m%d}',
+                    f'DATERANGE={begdate:%Y%m%d}|{enddate:%Y%m%d}',
                     ])
         else:
             headers.extend([
