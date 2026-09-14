@@ -3,3 +3,4 @@ poetry.lock
 mutants/
 .mutmut-cache
 mutmut-stats.json
+todo/
