@@ -112,8 +112,14 @@ class TestFieldToPython:
         assert result == 123.45
 
     def test_date_field(self):
-        result = Field.to_python('MATURITY', '12/1/24')
-        assert isinstance(result, Date)
+        """Verify a Date field parses month-before-day, not day-first.
+
+        Mutation: routing the Date arm through fmt='%d/%m/%y', which
+            reads '12/1/24' as 12 January instead of 1 December, and
+            which an isinstance check cannot see.
+        Oracle: hand-computed Date(2024, 12, 1).
+        """
+        assert Field.to_python('MATURITY', '12/1/24') == Date(2024, 12, 1)
 
     def test_unknown_field(self):
         with pytest.raises(ValueError, match='Unknown field'):
@@ -732,13 +738,18 @@ class TestBulkFieldFormatting:
         assert result[0]['Call Price'] == 102.5
 
     def test_put_schedule(self):
-        """Verify put_schedule returns dicts with Put Date and Put Price."""
+        """Verify put_schedule files the date and the price under the right keys.
+
+        Mutation: reversing BULK_FIELD_KEYS['PUT_SCHEDULE'], which puts
+            the date under 'Put Price' - a key-presence check passes
+            either way.
+        Oracle: hand-computed Date(2027, 6, 1) and 100.0, each asserted
+            against its own key.
+        """
         s = ';2;1;2;5;06/01/2027;3;100.0;'
         result = Field.to_python('PUT_SCHEDULE', s)
-        assert isinstance(result, list)
-        assert len(result) == 1
-        assert 'Put Date' in result[0]
-        assert 'Put Price' in result[0]
+
+        assert result == [{'Put Date': Date(2027, 6, 1), 'Put Price': 100.0}]
 
     def test_conversion_reset_schedule(self):
         """Verify conversion_reset_schedule returns dicts with named keys."""
@@ -770,16 +781,28 @@ class TestBulkFieldFormatting:
         assert result is None
 
     def test_issue_underwriter(self):
-        """Verify issue_underwriter returns dicts with all 8 fields."""
-        s = ';2;1;8;1;Bookrunner;1;BofA Securities;1;BofA;1;JLMB;1;Joint Lead;3;0.0;2;1;5;06/17/2024;'
+        """Verify all eight underwriter columns land under the right keys.
+
+        Mutation: dropping a key from BULK_FIELD_KEYS or transposing
+            'Code' with 'Description'. zip() truncates silently, so
+            asserting a subset of keys cannot see either.
+        Oracle: the whole row, hand-written from the payload's eight
+            type/value pairs in order.
+        """
+        s = (';2;1;8;1;Bookrunner;1;BofA Securities;1;BofA;1;JLMB;'
+             '1;Joint Lead;3;0.0;2;1;5;06/17/2024;')
         result = Field.to_python('ISSUE_UNDERWRITER', s)
-        assert isinstance(result, list)
-        assert len(result) == 1
-        assert 'Role' in result[0]
-        assert 'Firm' in result[0]
-        assert 'Abbreviation' in result[0]
-        assert result[0]['Role'] == 'Bookrunner'
-        assert result[0]['Firm'] == 'BofA Securities'
+
+        assert result == [{
+            'Role': 'Bookrunner',
+            'Firm': 'BofA Securities',
+            'Abbreviation': 'BofA',
+            'Code': 'JLMB',
+            'Description': 'Joint Lead',
+            'Amount': 0.0,
+            'Order': 1,
+            'Date': Date(2024, 6, 17),
+            }]
 
 
 if __name__ == '__main__':
