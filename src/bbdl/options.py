@@ -12,11 +12,42 @@ programflag: when using `oneshot` Bloomberg will lock for four months the
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from bbdl.exceptions import BbdlValidationError
 from opendate import Date
+
+from bbdl.exceptions import BbdlValidationError
 from libb import ConfigOptions, get_tempdir
 
 __all__ = ['BbdlOptions']
+
+
+def _coerce_date(value) -> Date | None:
+    """Coerce a date-like option to Date.
+
+    Parameters
+    ----------
+    value : str | datetime.date | Date | None
+        Date as the caller supplied it. A str is parsed, any other
+        date-like object is converted, and a falsy value maps to None.
+
+    Returns
+    -------
+    Date | None
+        The coerced date, or None where value is falsy.
+
+    Notes
+    -----
+    - Date's own constructor takes (year, month, day), so Date(value)
+      raises TypeError for every value a caller would pass here.
+    - A str goes through Date.parse and everything else through
+      Date.instance, matching parse_dates in bbdl.client.
+    """
+    if not value:
+        return None
+    if isinstance(value, Date):
+        return value
+    if isinstance(value, str):
+        return Date.parse(value)
+    return Date.instance(value)
 
 
 @dataclass
@@ -45,8 +76,8 @@ class BbdlOptions(ConfigOptions):
     use_custom_mappings: bool = True  # use custom bulk field formatters
 
     def __post_init__(self):
-        self.begdate = Date(self.begdate) if self.begdate else None
-        self.enddate = Date(self.enddate) if self.enddate else None
+        self.begdate = _coerce_date(self.begdate)
+        self.enddate = _coerce_date(self.enddate)
         if self.programflag not in {'oneshot', 'adhoc'}:
             raise BbdlValidationError(f"programflag must be 'oneshot' or 'adhoc', got '{self.programflag}'")
         if is_terminal(self):
