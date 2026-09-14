@@ -37,6 +37,28 @@ options = {
 }
 ```
 
+A dotted path into a config module works in place of the dict, following
+the 12factor pattern. `SFTPClient` reads the nested attributes
+`hostname`, `username`, `password`, `usernumber`, `sn`, `ws`, `port`,
+`secure`, `remotedir` and `programflag` from the leaf it names:
+
+```python
+from bbdl import SFTPClient
+
+sftp = SFTPClient('bbg.data.ftp', config_module)
+```
+
+`programflag` takes `adhoc` or `oneshot`. Under `oneshot` Bloomberg
+locks the data categories pulled for four months, so a single $10k pull
+bills at least $10k a month for four months. `oneshot` is cheaper than
+`adhoc` only where the fields selected are exactly the ones wanted.
+
+Terminal linking takes one of two shapes. A Bloomberg Anywhere terminal
+sets `is_bba=True` and supplies `usernumber` alone; including `sn` and
+`ws` can degrade the request. An open terminal supplies all three, where
+`sn` is the prefix and `ws` the suffix of the S/N field that `IAM <GO>`
+reports.
+
 Basic Usage
 ===========
 
@@ -174,8 +196,8 @@ with SFTPClient(options) as sftp:
 
 ### Mixed Overrides
 
-You can mix fields with different overrides in a single request. For getdata,
-fields are automatically grouped by override:
+A single request can mix fields with different overrides. For getdata,
+fields are grouped by override automatically:
 
 ```python
 field_overrides = {
@@ -226,6 +248,45 @@ for error in result.errors:
 df = result.to_dataframe()
 ```
 
+Bulk Fields
+===========
+
+Some Bloomberg fields return multi-row, multi-column payloads: call and
+put schedules, conversion reset schedules, underwriter lists. By default
+these parse to a list of dicts with named columns, taken from
+`BULK_FIELD_KEYS` in `mappings.py`:
+
+```python
+result = sftp.request(['88579YAW4 Corp'], ['CALL_SCHEDULE'])
+
+for row in result.data:
+    for call in row['CALL_SCHEDULE']:
+        print(call['Call Date'], call['Call Price'])
+```
+
+Setting `use_custom_mappings=False` on the options returns the raw
+`list[tuple]` form instead, with no column names.
+
+Error Codes
+===========
+
+A failed identifier lands in `result.errors` rather than `result.data`,
+carrying its `RETCODE` and a `RETMSG` looked up from the `ERROR_MESSAGE`
+table in `request.py`. The common codes:
+
+| code | meaning |
+| --- | --- |
+| 10 | Bloomberg cannot find the security as specified |
+| 11 | restricted security |
+| 994 | permission denied |
+| 995 | maximum number of fields exceeded |
+| 996 | maximum number of data points exceeded |
+| 999 | unloadable security |
+
+Negative codes come from the `gethistory` program: `-10` is a start date
+later than the end date, `-12` an unavailable field, `-14` a field
+`gethistory` does not support.
+
 BVAL Pricing
 ============
 
@@ -251,3 +312,72 @@ from opendate import Date
 with SFTPClient(options) as sftp:
     result = sftp.request(try_retrieve_existing_date=Date(2025, 1, 3))
 ```
+
+Internals
+=========
+
+A request runs in four steps:
+
+1. `SFTPClient` opens the SFTP connection as a context manager and
+   orchestrates the rest.
+2. `Request.build()` writes the request file: headers, the field block,
+   then the identifier block. Fields are chunked at 500 per file, and a
+   `field_overrides` request is split into one file per override group,
+   named `fprp00.req`, `fprp01.req` and so on.
+3. `Request.send()` uploads the request, then polls for the response
+   file every 10 seconds for up to `wait_time` minutes. A `gethistory`
+   response is always gzipped, whatever the `compressed` option says.
+4. `Request.parse()` reads the pipe-delimited response into a `Result`.
+
+Two modules carry the conversion logic. `Field` in `parser.py` maps a
+Bloomberg value to a Python type using the field metadata embedded in
+`assets.py`. `Ticker` in the same module formats tickers and validates
+yellow keys.
+
+A non-historical response yields one scalar per field. A historical
+response wraps each field's values in a list, one entry per observation
+date, aggregated per identifier, with `DATE` holding the matching
+observation dates. `Result.unwrap_single_element_lists()` flattens a
+single-date historical result back to scalars and converts NaN and Inf
+to `None`; `Result.to_dataframe()` calls it before building the frame.
+
+Development
+===========
+
+```bash
+# install with test dependencies
+poetry install -E test
+
+# run the suite
+poetry run pytest
+
+# a single file, class, or test
+poetry run pytest tests/test_parser.py -v
+poetry run pytest tests/test_parser.py::TestFieldToNumber -v
+
+# with log output
+poetry run pytest tests/ --log-cli-level=DEBUG
+
+# line coverage
+poetry run python -m coverage run --source=src/bbdl -m pytest tests/
+poetry run python -m coverage report -m --omit='*/assets.py'
+
+# mutation testing; clear the cache first, or stats go stale
+rm -rf mutants mutmut-stats.json
+poetry run mutmut run --max-children 8
+poetry run mutmut results
+poetry run mutmut show <mutant-id>
+```
+
+Test paths and flags come from `[tool.pytest.ini_options]` in
+`pyproject.toml`, so a bare `poetry run pytest` runs the whole suite.
+Warnings are errors there, which keeps a new deprecation from scrolling
+past unnoticed.
+
+`tests/fixtures/samples/` holds captured request and response pairs. The
+ten `request.req` files are compared byte for byte against
+`Request.build` output, so a change to any header line shows up as a
+failing golden rather than a silent difference.
+
+Behavior the suite deliberately does not cover is recorded in
+`todo/todo_test_coverage_gaps.md`, with the unblock for each.
