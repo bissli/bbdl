@@ -1,14 +1,18 @@
 """Unit tests for bbdl.client module."""
 
 import gzip
+import importlib
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
+import config
+
 from bbdl import BbdlOptions, SFTPClient
 from bbdl.exceptions import BbdlTimeoutError
 from fixtures.field_lists import REQUEST_FIELDS, REQUEST_IDENTIFIERS
+from libb import Setting
 from opendate import Date
 
 
@@ -97,6 +101,70 @@ def _client(options, cn):
     with patch('bbdl.client.ftp.connect', return_value=cn):
         client = SFTPClient(options)
         return client.__enter__()
+
+
+class TestConfigModuleEntryPoint:
+    """Tests for the documented SFTPClient('<path>', config) construction."""
+
+    def test_settings_path_resolves_to_options(self):
+        """Verify a dotted config path builds the options it names.
+
+        Mutation: the wrong leaf selected from the Setting tree, which
+            would silently connect to the data host with the mock
+            credentials or the reverse.
+        Oracle: the values tests/config.py sets under bbg.mock.ftp,
+            asserted field by field.
+        """
+        client = SFTPClient('bbg.mock.ftp', config)
+
+        assert client.options.hostname == '127.0.0.1'
+        assert client.options.username == 'foo'
+        assert client.options.port == 21
+        assert client.options.usernumber == '1234567'
+        assert client.options.sn == '890'
+        assert client.options.ws == '1'
+
+    @pytest.mark.parametrize('locked_before', [True, False])
+    def test_importing_the_config_preserves_the_lock_state(self, locked_before):
+        """Verify importing tests/config.py leaves Setting's lock as it was.
+
+        Mutation: an unconditional Setting.lock() at the end of
+            tests/config.py. Setting._locked is a CLASS attribute, so
+            that locks every Setting in the process; a later caller
+            building its own tree then fails with 'AttributeError ...
+            (locked)' pointing nowhere near the config module.
+        Oracle: the lock state is driven to each value, the module is
+            reloaded, and the state is compared against what it was.
+            The locked_before=False case is the one an unconditional
+            lock() fails.
+        """
+        was_locked = Setting._locked
+        try:
+            Setting.lock() if locked_before else Setting.unlock()
+            importlib.reload(config)
+
+            assert Setting._locked is locked_before
+        finally:
+            Setting.lock() if was_locked else Setting.unlock()
+
+    def test_a_fresh_setting_tree_is_writable_when_unlocked(self):
+        """Verify the lock is a process-wide switch, which is why it is restored.
+
+        Mutation: Setting.unlock() made a no-op, or the lock left set by
+            an importer, either of which makes an unrelated Setting
+            tree unwritable.
+        Oracle: a tree built and written to under an explicit unlock,
+            with the prior state put back.
+        """
+        was_locked = Setting._locked
+        try:
+            Setting.unlock()
+            probe = Setting()
+            probe.some.branch.leaf = 'written'
+
+            assert probe.some.branch.leaf == 'written'
+        finally:
+            Setting.lock() if was_locked else Setting.unlock()
 
 
 class TestRequestChunking:

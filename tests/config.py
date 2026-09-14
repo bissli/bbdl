@@ -1,6 +1,21 @@
+"""Settings tree for the tests, in the shape SFTPClient's config argument takes.
+
+A caller reaches these as ``SFTPClient('bbg.mock.ftp', config)``, so the
+tree has to exist at module scope under the name ``bbg``.
+
+Notes
+-----
+- ``Setting._locked`` is a CLASS attribute, so ``Setting.lock()`` locks
+  every Setting in the process, not just this tree. Importing a config
+  module must not decide that for the whole process, so the prior lock
+  state is restored on the way out rather than left locked.
+"""
+
 import os
 
 from libb import Setting
+
+_WAS_LOCKED = Setting._locked
 
 Setting.unlock()
 
@@ -24,4 +39,5 @@ bbg.mock.ftp.sn = '890'
 bbg.mock.ftp.ws = '1'
 bbg.mock.ftp.programflag = 'adhoc'
 
-Setting.lock()
+if _WAS_LOCKED:
+    Setting.lock()
