@@ -221,6 +221,74 @@ for row in result.data:
     print(f"  2025 Est EBITDA: {row['BEST_EBITDA']}")
 ```
 
+Volatility Surface Points (OVDV)
+================================
+
+Bloomberg exposes individual points on a BVOL volatility surface as ordinary
+securities. A point ticker goes through `request` like any other identifier,
+against the `PX_LAST_EOD` field. No separate header, option, or client method
+applies.
+
+```python
+from bbdl import SFTPClient
+
+options = {...}  # see Configuration above
+
+tickers = [
+    'FSLY US JUL27 35DC VOL BVOL Equity',
+    'FSLY US JUL27 25DC VOL BVOL Equity',
+    'FSLY US OCT27 35DC VOL BVOL Equity',
+    'FSLY US OCT27 25DC VOL BVOL Equity',
+    ]
+
+with SFTPClient(options) as sftp:
+    result = sftp.request(tickers, ['PX_LAST_EOD'])
+
+for row in result.data:
+    print(f"{row['IDENTIFIER']}: {row['PX_LAST_EOD']}")
+```
+
+The value is the implied volatility in percent.
+
+### Ticker format
+
+    <underlying> <expiry> <point> VOL BVOL <yellow key>
+
+The expiry is either a listed expiry written `MONYY`, such as `JUL27`, or a
+tenor such as `1W`, `1M`, `3M`, `1Y`, `18M` or `2Y`. A listed expiry resolves
+only where the exchange lists it; tenors are interpolated and always
+available.
+
+The point is a delta or a moneyness level:
+
+- `35DC` is a 35 delta call, `25DP` a 25 delta put. Delta here is forward
+  delta.
+- A bare number is percent moneyness, such as `100` or `102.5`.
+
+Forms the Bloomberg guide documents:
+
+    SPX NOV14 25DP VOL BVOL Index      listed expiry and delta
+    VOD LN 1Y 25DC VOL BVOL Equity     tenor and delta
+    IBM US 3M 102.5 VOL BVOL Equity    tenor and moneyness
+    TPX JUN28 102.5 VOL BVOL Index     listed expiry and moneyness
+
+The terminal exports the exact ticker list for an underlying: `OVDV <GO>`,
+select BVOL as the surface source, then
+`91) Actions > Export tickers to excel`.
+
+### Limits
+
+Point tickers carry end-of-day values only. Intraday snapshots are not
+available for them.
+
+A ticker Bloomberg does not recognize comes back with a non-zero return code
+and lands in `result.errors`. The remaining points still parse into
+`result.data`, so one bad ticker costs its own row rather than the request.
+
+Requesting a whole surface rather than single points needs
+`OUTPUTFORMAT=bulklist`, which this library does not implement.
+
+
 Result Object
 =============
 
