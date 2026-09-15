@@ -776,6 +776,27 @@ class TestBulkFieldFormatting:
         assert result[0]['Ticker'] == 'MSFT US'
         assert result[0]['Type'] == 'Equity'
 
+    def test_opt_chain(self):
+        """Verify opt_chain files each whole ticker under Security Description.
+
+        Mutation: dropping the scalar branch in _bulk_to_dicts, so a
+            one-dimensional bulk field zips the key against the string
+            itself and files its first character - 'F' - as the value.
+            OPT_CHAIN is the only one-dimensional entry in
+            BULK_FIELD_KEYS, so no other test reaches that branch, and a
+            key-presence check passes either way.
+        Oracle: the two contract tickers hand-written from the payload's
+            type/value pairs, asserted whole.
+        """
+        s = (';1;2;1;FSLY US 07/16/27 C25 Equity;'
+             '1;FSLY US 10/15/27 C30 Equity;')
+        result = Field.to_python('OPT_CHAIN', s)
+
+        assert result == [
+            {'Security Description': 'FSLY US 07/16/27 C25 Equity'},
+            {'Security Description': 'FSLY US 10/15/27 C30 Equity'},
+            ]
+
     def test_null_bulk_field(self):
         """Verify null bulk field returns None."""
         result = Field.to_python('SOFT_CALL_SCHEDULE', '')

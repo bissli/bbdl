@@ -14,4 +14,5 @@ BULK_FIELD_KEYS = {
     'CONVERSION_RESET_SCHEDULE': ['Reset Date', 'Conversion Price', 'Floor'],
     'REDEMPTION_UNDERLYING': ['Ticker', 'Type'],
     'REDEMPTION_UNDERLYING_DATA': ['Ticker', 'Weight', 'Initial Value', 'Strike', 'Upper Barrier', 'Lower Barrier', 'Num Shares'],
+    'OPT_CHAIN': ['Security Description'],
     }
