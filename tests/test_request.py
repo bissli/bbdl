@@ -468,7 +468,6 @@ END-OF-FILE
         assert result.data[0]['NOT_A_REAL_FIELD_XYZ'] is None
         assert ('NOT_A_REAL_FIELD_XYZ', object) in result.columns
 
-
     def test_row_too_short_for_a_return_code_is_filed_not_raised(self):
         """Verify a row with no return code costs its row, not the reply.
 
@@ -767,19 +766,24 @@ class TestRequestBuildIdentifiers:
         assert self._data_block([('88160RAG6', 'CUSIP')]) == ['88160RAG6|CUSIP']
 
     def test_override_pairs_carry_a_count(self):
-        """Verify an override identifier writes value|type|N|pairs.
+        """Verify an override identifier writes value|type|N|fields|values.
 
         Mutation: iden[:3] in place of iden[:2], which repeats the first
-            override field as the type; or the count arithmetic, which
-            tells Bloomberg the wrong number of overrides.
-        Oracle: hand-computed - two field/value pairs give the count 2,
-            four give 4.
+            override field as the type; the count arithmetic, which tells
+            Bloomberg the wrong number of overrides; or the pairs written
+            interleaved, which Bloomberg answers with error 992.
+        Oracle: hand-computed counts - one pair gives 1, two give 2; and
+            the getData override example in Bloomberg's docs,
+            073914VW0 Mtge||2|MTG_PREPAY_TYP|MTG_PREPAY_SPEED|CPR|90|.
         """
         assert self._data_block([('IBM US Equity', '', 'FUND_PER', 'Q')]) == [
             'IBM US Equity||1|FUND_PER|Q']
         assert self._data_block(
             [('IBM US Equity', '', 'FUND_PER', 'Q', 'EQY_FUND_YEAR', '2024')]) == [
-            'IBM US Equity||2|FUND_PER|Q|EQY_FUND_YEAR|2024']
+            'IBM US Equity||2|FUND_PER|EQY_FUND_YEAR|Q|2024']
+        mtge = ('073914VW0 Mtge', '', 'MTG_PREPAY_TYP', 'CPR')
+        assert self._data_block([(*mtge, 'MTG_PREPAY_SPEED', '90')]) == [
+            '073914VW0 Mtge||2|MTG_PREPAY_TYP|MTG_PREPAY_SPEED|CPR|90']
 
     def test_odd_length_override_raises(self):
         """Verify an unpaired override list is rejected, not truncated.

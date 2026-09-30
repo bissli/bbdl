@@ -256,11 +256,14 @@ class Request:
                 # other identifiers need a value and a type
                 elif len(iden) == 2:
                     f.write('{}|{}\n'.format(*iden))
-                # overrides need a list of field/value pairs
+                # overrides arrive as field/value pairs, but Bloomberg
+                # reads every field, then every value
                 elif len(iden) > 3 and len(iden) % 2 == 0:
                     f.write('{}|{}|'.format(*iden[:2]))
                     f.write(f'{int(len(iden) / 2 - 1)}|')
-                    f.write('|'.join([str(x) for x in iden[2:]]) + '\n')
+                    pairs = iden[2:]
+                    fields, values = pairs[0::2], pairs[1::2]
+                    f.write('|'.join(str(x) for x in (*fields, *values)) + '\n')
                 else:
                     raise ValueError(f'Unexpected idtype format: {iden}')
             f.write('END-OF-DATA\n')
